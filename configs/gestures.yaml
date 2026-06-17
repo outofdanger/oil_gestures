@@ -1,0 +1,43 @@
+static:
+  enabled: true
+  min_confidence: 0.70
+  smoothing_window: 5
+  gestures:
+    - OPEN_PALM
+    - FIST
+    - OK_SIGN
+    - UNKNOWN
+
+dynamic:
+  enabled: true
+  sequence_length: 40
+  min_confidence: 0.75
+  use_rule_based_fallback: true
+  gestures:
+    - IDLE
+    - POINTING_INDEX
+    - SQUEEZE
+    - RELEASE
+    - ROTATE_CLOCKWISE
+    - ROTATE_COUNTERCLOCKWISE
+
+cursor:
+  enabled: true
+  pointer_source: "INDEX_TIP"
+  smoothing_alpha: 0.35
+  dry_run: true
+
+cursor_actions:
+  cooldown_seconds: 0.50
+
+  dynamic_mapping:
+    POINTING_INDEX: "MOVE_CURSOR"
+    SQUEEZE: "GRAB"
+    RELEASE: "RELEASE"
+    ROTATE_CLOCKWISE: "INCREASE_PRESSURE"
+    ROTATE_COUNTERCLOCKWISE: "DECREASE_PRESSURE"
+
+  static_fallback_mapping:
+    OK_SIGN: "SELECT"
+    FIST: "GRAB"
+    OPEN_PALM: "RELEASE"
