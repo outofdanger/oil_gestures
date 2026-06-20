@@ -1,0 +1,5 @@
+mediapipe
+opencv-python
+numpy
+PyYAML
+pyobjc-framework-Quartz; sys_platform == "darwin"

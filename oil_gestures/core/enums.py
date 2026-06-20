@@ -17,6 +17,7 @@ class GestureName(str, Enum):
     # Dynamic gestures
     SQUEEZE = "SQUEEZE"
     RELEASE = "RELEASE"
+    MIDDLE_PINCH = "MIDDLE_PINCH"
     ROTATE_CLOCKWISE = "ROTATE_CLOCKWISE"
     ROTATE_COUNTERCLOCKWISE = "ROTATE_COUNTERCLOCKWISE"
     POINTING_INDEX = "POINTING_INDEX"
@@ -51,6 +52,7 @@ class MouseAction(str, Enum):
     NONE = "NONE"
     MOVE = "MOVE"
     LEFT_CLICK = "LEFT_CLICK"
+    RIGHT_CLICK = "RIGHT_CLICK"
     MOUSE_DOWN = "MOUSE_DOWN"
     MOUSE_UP = "MOUSE_UP"
     DRAG = "DRAG"
@@ -64,6 +66,7 @@ class CursorAction(str, Enum):
     NONE = "NONE"
     MOVE_CURSOR = "MOVE_CURSOR"
     SELECT = "SELECT"
+    RIGHT_CLICK = "RIGHT_CLICK"
     GRAB = "GRAB"
     RELEASE = "RELEASE"
     DRAG = "DRAG"

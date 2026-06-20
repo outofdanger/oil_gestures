@@ -2,6 +2,10 @@ static:
   enabled: true
   min_confidence: 0.70
   smoothing_window: 5
+  ok_pinch_ratio: 0.16
+  finger_extension_margin: 0.035
+  fist_curl_margin: 0.015
+  open_palm_min_extended: 4
   gestures:
     - OPEN_PALM
     - FIST
@@ -10,22 +14,56 @@ static:
 
 dynamic:
   enabled: true
+  fallback_gesture: POINTING_INDEX
+  source: DYNAMIC_RULES
+  confidence: 1.0
+  require_hand: true
   sequence_length: 40
   min_confidence: 0.75
   use_rule_based_fallback: true
+  pinch_tracking_enabled: true
+  press_thumb_tip: 4
+  press_index_tip: 8
+  press_ratio: 0.10
+  release_ratio: 0.14
+  middle_pinch_tracking_enabled: true
+  middle_pinch_thumb_tip: 4
+  middle_pinch_tip: 12
+  middle_pinch_press_ratio: 0.10
+  middle_pinch_release_ratio: 0.14
+  rotation_tracking_enabled: true
+  rotation_window: 8
+  rotation_threshold_radians: 0.85
+  rotation_cooldown_seconds: 0.70
   gestures:
     - IDLE
     - POINTING_INDEX
     - SQUEEZE
     - RELEASE
+    - MIDDLE_PINCH
     - ROTATE_CLOCKWISE
     - ROTATE_COUNTERCLOCKWISE
 
 cursor:
-  enabled: true
-  pointer_source: "INDEX_TIP"
-  smoothing_alpha: 0.35
+  # Optional feature initial state. Gesture recognition runs regardless.
+  enabled: false
+  pointer_source: "INDEX_MCP"
   dry_run: true
+  toggle_gesture: "MIDDLE_PINCH"
+  toggle_min_confidence: 0.70
+  toggle_cooldown_seconds: 1.0
+  margin_x: 0.08
+  margin_top: 0.10
+  margin_bottom: 0.12
+  invert_y: false
+  smoothing_alpha: 1.0
+  min_cutoff: 7.0
+  beta: 0.080
+  derivative_cutoff: 1.0
+  dead_zone_points: 0.0
+  max_speed_points_per_second: 50000.0
+  reacquire_frames: 1
+  lost_reset_seconds: 0.20
 
 cursor_actions:
   cooldown_seconds: 0.50

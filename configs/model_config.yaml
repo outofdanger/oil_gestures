@@ -1,0 +1,6 @@
+mediapipe:
+  model_path: "assets/models/mediapipe/hand_landmarker.task"
+  max_hands: 1
+  model_complexity: 1
+  min_detection_confidence: 0.65
+  min_tracking_confidence: 0.65

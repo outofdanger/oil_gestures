@@ -92,7 +92,7 @@ class PointerPosition:
     """
     Normalized hand pointer position in camera coordinates.
 
-    Usually produced from INDEX_TIP or palm center.
+    Usually produced from INDEX_MCP, INDEX_TIP, or palm center.
 
     Coordinate range:
         x: 0.0 - 1.0
@@ -146,7 +146,8 @@ class CursorControlResult:
     Example:
         SQUEEZE -> CursorAction.GRAB
         RELEASE -> CursorAction.RELEASE
-        ROTATE_CLOCKWISE -> CursorAction.ROTATE_CLOCKWISE
+        ROTATE_CLOCKWISE -> CursorAction.INCREASE_PRESSURE
+        ROTATE_COUNTERCLOCKWISE -> CursorAction.DECREASE_PRESSURE
 
     Producer:
         cursor.cursor_pipeline.py / cursor.action_mapper.py

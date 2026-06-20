@@ -1,13 +1,13 @@
 app:
   name: "Oil Gestures"
-  mode: "CURSOR_CONTROL"
+  mode: "GESTURE_COMMAND"
   debug: true
 
 camera:
   device_id: 0
   width: 1280
   height: 720
-  fps: 30
+  fps: 60
   mirror: true
 
 runtime:
@@ -15,3 +15,4 @@ runtime:
   show_landmarks: true
   show_debug_overlay: true
   safe_exit_key: "q"
+  window_name: "Oil Gestures"
