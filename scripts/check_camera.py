@@ -51,11 +51,17 @@ def main() -> int:
         width=config.camera.width,
         height=config.camera.height,
         fps=config.camera.fps,
+        preferred_fourcc=config.camera.preferred_fourcc,
     )
     frame_processor_config = FrameProcessorConfig(
-        width=config.camera.width,
-        height=config.camera.height,
+        width=None,
+        height=None,
         mirror=config.camera.mirror,
+    )
+    inference_frame_processor_config = FrameProcessorConfig(
+        width=config.mediapipe.input_width,
+        height=config.mediapipe.input_height,
+        mirror=False,
     )
     fps_meter = FpsMeter()
     safe_exit = ord(config.runtime.safe_exit_key[:1] or "q")
@@ -71,7 +77,8 @@ def main() -> int:
         try:
             for frame_packet in camera.frames():
                 display_packet = process_frame(frame_packet, frame_processor_config)
-                rgb_packet = bgr_to_rgb(display_packet)
+                inference_packet = process_frame(display_packet, inference_frame_processor_config)
+                rgb_packet = bgr_to_rgb(inference_packet)
                 landmark_packet = landmarker.detect(rgb_packet)
                 fps = fps_meter.update()
 

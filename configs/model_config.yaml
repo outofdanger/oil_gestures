@@ -1,5 +1,8 @@
 mediapipe:
   model_path: "assets/models/mediapipe/hand_landmarker.task"
+  # Inference is intentionally smaller than the display frame for real-time CPU use.
+  input_width: 640
+  input_height: 360
   max_hands: 1
   model_complexity: 1
   min_detection_confidence: 0.65

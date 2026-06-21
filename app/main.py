@@ -19,8 +19,11 @@ from oil_gestures.core.constants import (
     FPS_METER_SMOOTHING_ALPHA,
     MOUSE_TEST_STEP_SECONDS,
     MOUSE_TEST_TARGETS,
+    MINIMUM_TARGET_FPS,
     OPENCV_ESCAPE_KEY_CODE,
     PAUSE_KEY_CHARACTERS,
+    PERFORMANCE_LOG_INTERVAL_SECONDS,
+    PERFORMANCE_TIMING_SMOOTHING_ALPHA,
 )
 from oil_gestures.core.logger import get_logger
 from oil_gestures.core.types import ScreenPosition
@@ -58,6 +61,26 @@ class FpsMeter:
             self.frame_count = 0
             self.last_time = now
         return self.average
+
+
+class PerformanceMeter:
+    def __init__(self) -> None:
+        self.inference_ms = 0.0
+        self.last_log_time = time.perf_counter()
+
+    def update_inference(self, elapsed_seconds: float) -> None:
+        current_ms = elapsed_seconds * 1000.0
+        if self.inference_ms == 0.0:
+            self.inference_ms = current_ms
+        else:
+            alpha = PERFORMANCE_TIMING_SMOOTHING_ALPHA
+            self.inference_ms += (current_ms - self.inference_ms) * alpha
+
+    def should_log(self, now: float) -> bool:
+        if now - self.last_log_time < PERFORMANCE_LOG_INTERVAL_SECONDS:
+            return False
+        self.last_log_time = now
+        return True
 
 
 def build_cursor_pipeline(config: OilGesturesConfig) -> CursorPipeline:
@@ -131,14 +154,21 @@ def run(config: OilGesturesConfig) -> int:
         width=config.camera.width,
         height=config.camera.height,
         fps=config.camera.fps,
+        preferred_fourcc=config.camera.preferred_fourcc,
     )
     frame_processor_config = FrameProcessorConfig(
-        width=config.camera.width,
-        height=config.camera.height,
+        width=None,
+        height=None,
         mirror=config.camera.mirror,
+    )
+    inference_frame_processor_config = FrameProcessorConfig(
+        width=config.mediapipe.input_width,
+        height=config.mediapipe.input_height,
+        mirror=False,
     )
 
     fps_meter = FpsMeter()
+    performance_meter = PerformanceMeter()
     static_recognizer = StaticGestureRecognizer(config.static)
     dynamic_recognizer = DynamicGestureRecognizer(config.dynamic)
     cursor_recognizer = CursorGestureRecognizer(config.cursor_gestures)
@@ -165,8 +195,11 @@ def run(config: OilGesturesConfig) -> int:
         try:
             for frame_packet in camera.frames():
                 display_packet = process_frame(frame_packet, frame_processor_config)
-                rgb_packet = bgr_to_rgb(display_packet)
+                inference_packet = process_frame(display_packet, inference_frame_processor_config)
+                rgb_packet = bgr_to_rgb(inference_packet)
+                inference_started = time.perf_counter()
                 landmark_packet = landmarker.detect(rgb_packet)
+                performance_meter.update_inference(time.perf_counter() - inference_started)
                 static_gesture = static_recognizer.update(landmark_packet)
                 dynamic_gesture = dynamic_recognizer.update(landmark_packet)
                 if pipeline.enabled:
@@ -181,6 +214,18 @@ def run(config: OilGesturesConfig) -> int:
                     paused=paused,
                 )
                 fps = fps_meter.update()
+                now = time.perf_counter()
+                if config.runtime.debug and fps > 0.0 and performance_meter.should_log(now):
+                    log_method = logger.warning if fps < MINIMUM_TARGET_FPS else logger.info
+                    log_method(
+                        "Performance: %.1f FPS, MediaPipe %.1f ms, camera %dx%d, inference %dx%d",
+                        fps,
+                        performance_meter.inference_ms,
+                        display_packet.width,
+                        display_packet.height,
+                        inference_packet.width,
+                        inference_packet.height,
+                    )
 
                 if config.runtime.show_camera_feed:
                     if config.runtime.show_landmarks and landmark_packet.hand_detected:

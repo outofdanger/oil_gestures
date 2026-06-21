@@ -73,6 +73,10 @@ add a udev rule such as `KERNEL=="uinput", GROUP="input", MODE="0660"` in
 Without that access, `--real-mouse` raises a clear error instead of silently
 falling back to dry-run.
 
+For real-time processing, Linux/V4L2 requests MJPG at 1280x720@30 by default,
+while MediaPipe receives a separate 640x360 inference frame. The terminal logs
+the actual backend, resolution, FPS, and FOURCC accepted by the camera driver.
+
 The prebuilt dependency set supports macOS on Apple Silicon, Windows x86-64,
 and Linux x86-64 with glibc 2.28 or newer. MediaPipe/OpenCV do not currently
 provide the complete wheel set for macOS Intel, Linux ARM64, or Windows ARM64.

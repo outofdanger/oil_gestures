@@ -6,6 +6,7 @@ from typing import Any
 
 from oil_gestures.core.constants import (
     DEFAULT_CAMERA_ID,
+    DEFAULT_CAMERA_FOURCC,
     DEFAULT_CURSOR_BETA,
     DEFAULT_CURSOR_DEAD_ZONE_POINTS,
     DEFAULT_CURSOR_DERIVATIVE_CUTOFF,
@@ -25,6 +26,8 @@ from oil_gestures.core.constants import (
     DEFAULT_FRAME_HEIGHT,
     DEFAULT_FRAME_WIDTH,
     DEFAULT_MAX_HANDS,
+    DEFAULT_MEDIAPIPE_INPUT_HEIGHT,
+    DEFAULT_MEDIAPIPE_INPUT_WIDTH,
     DEFAULT_MEDIAPIPE_MODEL_PATH,
     DEFAULT_MIN_DETECTION_CONFIDENCE,
     DEFAULT_MIN_TRACKING_CONFIDENCE,
@@ -60,6 +63,7 @@ class CameraConfig:
     height: int = DEFAULT_FRAME_HEIGHT
     fps: int = DEFAULT_FPS
     mirror: bool = DEFAULT_MIRROR_FRAME
+    preferred_fourcc: str = DEFAULT_CAMERA_FOURCC
 
 
 @dataclass(frozen=True)
@@ -79,6 +83,8 @@ class MediaPipeConfig:
     min_detection_confidence: float = DEFAULT_MIN_DETECTION_CONFIDENCE
     min_tracking_confidence: float = DEFAULT_MIN_TRACKING_CONFIDENCE
     model_path: str = DEFAULT_MEDIAPIPE_MODEL_PATH
+    input_width: int = DEFAULT_MEDIAPIPE_INPUT_WIDTH
+    input_height: int = DEFAULT_MEDIAPIPE_INPUT_HEIGHT
 
 
 @dataclass(frozen=True)
@@ -190,6 +196,9 @@ def load_config(config_dir: str | Path | None = None) -> OilGesturesConfig:
             height=_as_int(camera_section.get("height"), camera_defaults.height),
             fps=_as_int(camera_section.get("fps"), camera_defaults.fps),
             mirror=_as_bool(camera_section.get("mirror"), camera_defaults.mirror),
+            preferred_fourcc=str(
+                camera_section.get("preferred_fourcc", camera_defaults.preferred_fourcc)
+            ),
         ),
         runtime=RuntimeConfig(
             debug=_as_bool(app_section.get("debug"), runtime_defaults.debug),
@@ -223,6 +232,14 @@ def load_config(config_dir: str | Path | None = None) -> OilGesturesConfig:
                 media_defaults.min_tracking_confidence,
             ),
             model_path=model_path,
+            input_width=max(
+                1,
+                _as_int(mediapipe_section.get("input_width"), media_defaults.input_width),
+            ),
+            input_height=max(
+                1,
+                _as_int(mediapipe_section.get("input_height"), media_defaults.input_height),
+            ),
         ),
         static=StaticRecognizerConfig(
             enabled=_as_bool(static_section.get("enabled"), static_defaults.enabled),

@@ -7,8 +7,10 @@ camera:
   device_id: 0
   width: 1280
   height: 720
-  fps: 60
+  fps: 30
   mirror: true
+  # AUTO selects MJPG on Linux/V4L2 and lets other platforms choose natively.
+  preferred_fourcc: "AUTO"
 
 runtime:
   show_camera_feed: true

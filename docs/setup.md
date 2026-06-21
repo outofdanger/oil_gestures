@@ -75,6 +75,22 @@ ls -l /dev/video*
 groups
 ```
 
+The default Linux camera negotiation requests MJPG at 1280x720@30. MediaPipe
+processes a smaller 640x360 frame; the OpenCV preview keeps the camera's native
+frame. At startup, inspect the `Camera opened` log line. It should normally
+report `backend=V4L2`, `FOURCC=MJPG`, and at least 15 FPS.
+
+If the driver still reports less than 15 FPS, list its supported modes:
+
+```bash
+v4l2-ctl --device /dev/video0 --list-formats-ext
+```
+
+Then select a supported MJPG mode in `configs/default.yaml`. The conservative
+fallback is `width: 640`, `height: 480`, `fps: 30`, with
+`preferred_fourcc: "MJPG"`. Low light can also make some webcams increase
+exposure time and reduce their real frame rate even when 30 FPS was requested.
+
 Real cursor control uses one of two backends depending on the session type:
 
 - **X11/Xorg**: the X11 XTest extension through `python-xlib` (installed from
