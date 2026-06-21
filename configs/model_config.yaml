@@ -1,5 +1,9 @@
 mediapipe:
+  # hand_landmarker.task is the landmarks-only backend (kept for reference/tooling).
   model_path: "assets/models/mediapipe/hand_landmarker.task"
+  # gesture_recognizer.task is the active backend: one inference yields both the
+  # hand landmarks (cursor/dynamic) and the built-in canned gesture (static).
+  gesture_model_path: "assets/models/mediapipe/gesture_recognizer.task"
   # Inference is intentionally smaller than the display frame for real-time CPU use.
   input_width: 640
   input_height: 360

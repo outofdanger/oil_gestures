@@ -42,8 +42,14 @@ class LandmarkPacket:
     The exact landmarks type is flexible for MVP because it may be a MediaPipe
     object, list of normalized points, numpy array, or custom structure.
 
+    raw_gesture / raw_gesture_score carry MediaPipe's built-in (canned) gesture
+    classification when the backend is the GestureRecognizer. They are the
+    MediaPipe category name (e.g. "Closed_Fist", "Open_Palm", "Thumb_Up",
+    "Victory", "None") and its score. They stay unset for landmark-only backends.
+
     Producer:
-        vision.mediapipe_landmarker.py
+        vision.mediapipe_gesture.py (landmarks + canned gesture)
+        vision.mediapipe_landmarker.py (landmarks only)
 
     Consumers:
         gestures.static.static_recognizer.py
@@ -58,6 +64,8 @@ class LandmarkPacket:
     handedness: Handedness
     confidence: float
     timestamp: float
+    raw_gesture: str | None = None
+    raw_gesture_score: float = 0.0
 
 
 @dataclass
@@ -66,7 +74,7 @@ class GestureResult:
     Result produced by an independent gesture-recognition subsystem.
 
     Examples:
-        static: OPEN_PALM, FIST, OK_SIGN
+        static: OPEN_PALM, FIST, THUMB_UP, VICTORY
         cursor: INDEX_MCP, INDEX_SQUEEZE, INDEX_RELEASE, MIDDLE_PINCH
 
     Producers:

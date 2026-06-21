@@ -1,15 +1,15 @@
+# Static gestures are recognized by MediaPipe's built-in (canned) gesture
+# classifier via the GestureRecognizer backend. min_confidence gates the
+# canned-gesture score before it is accepted.
 static:
   enabled: true
   min_confidence: 0.70
   smoothing_window: 5
-  ok_pinch_ratio: 0.16
-  finger_extension_margin: 0.035
-  fist_curl_margin: 0.015
-  open_palm_min_extended: 4
   gestures:
-    - OPEN_PALM
-    - FIST
-    - OK_SIGN
+    - OPEN_PALM   # MediaPipe Open_Palm
+    - FIST        # MediaPipe Closed_Fist
+    - THUMB_UP    # MediaPipe Thumb_Up
+    - VICTORY     # MediaPipe Victory
     - UNKNOWN
 
 # Reserved for learned dynamic-gesture models. Cursor rules do not belong here.
@@ -35,6 +35,14 @@ cursor:
   max_speed_points_per_second: 50000.0
   reacquire_frames: 1
   lost_reset_seconds: 0.20
+
+  # Cursor mode is toggled on/off by holding a static gesture. Debounced with a
+  # dwell timer, a release latch (one show = one toggle) and a cooldown floor.
+  activation:
+    enabled: true
+    gesture: "VICTORY"
+    hold_seconds: 0.5
+    cooldown_seconds: 1.0
 
   recognition:
     enabled: true

@@ -22,11 +22,16 @@ from oil_gestures.core.constants import (
     DEFAULT_CURSOR_MIN_CUTOFF,
     DEFAULT_CURSOR_REACQUIRE_FRAMES,
     DEFAULT_CURSOR_SMOOTHING_ALPHA,
+    DEFAULT_CURSOR_TOGGLE_COOLDOWN_SECONDS,
+    DEFAULT_CURSOR_TOGGLE_ENABLED,
+    DEFAULT_CURSOR_TOGGLE_GESTURE,
+    DEFAULT_CURSOR_TOGGLE_HOLD_SECONDS,
     DEFAULT_DEBUG_MODE,
     DEFAULT_FPS,
     DEFAULT_FRAME_HEIGHT,
     DEFAULT_FRAME_WIDTH,
     DEFAULT_MAX_HANDS,
+    DEFAULT_MEDIAPIPE_GESTURE_MODEL_PATH,
     DEFAULT_MEDIAPIPE_INPUT_HEIGHT,
     DEFAULT_MEDIAPIPE_INPUT_WIDTH,
     DEFAULT_MEDIAPIPE_MODEL_PATH,
@@ -43,10 +48,11 @@ from oil_gestures.core.constants import (
     DEFAULT_SHOW_LANDMARKS,
     DEFAULT_WINDOW_NAME,
 )
+from oil_gestures.core.enums import GestureName
 from oil_gestures.cursor.action_mapper import DEFAULT_CURSOR_MAPPING
 from oil_gestures.gestures.cursor.cursor_recognizer import CursorGestureConfig
+from oil_gestures.gestures.decision.gesture_toggle import GestureToggleConfig
 from oil_gestures.gestures.dynamic.dynamic_recognizer import DynamicRecognizerConfig
-from oil_gestures.gestures.static.rules import StaticRuleConfig
 from oil_gestures.gestures.static.static_recognizer import StaticRecognizerConfig
 
 try:
@@ -87,6 +93,7 @@ class MediaPipeConfig:
     min_detection_confidence: float = DEFAULT_MIN_DETECTION_CONFIDENCE
     min_tracking_confidence: float = DEFAULT_MIN_TRACKING_CONFIDENCE
     model_path: str = DEFAULT_MEDIAPIPE_MODEL_PATH
+    gesture_model_path: str = DEFAULT_MEDIAPIPE_GESTURE_MODEL_PATH
     input_width: int = DEFAULT_MEDIAPIPE_INPUT_WIDTH
     input_height: int = DEFAULT_MEDIAPIPE_INPUT_HEIGHT
 
@@ -130,6 +137,7 @@ class OilGesturesConfig:
     cursor: CursorConfig = field(default_factory=CursorConfig)
     cursor_gestures: CursorGestureConfig = field(default_factory=CursorGestureConfig)
     cursor_actions: CursorActionsConfig = field(default_factory=CursorActionsConfig)
+    cursor_toggle: GestureToggleConfig = field(default_factory=GestureToggleConfig)
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -177,6 +185,7 @@ def load_config(config_dir: str | Path | None = None) -> OilGesturesConfig:
     dynamic_section = gestures_yaml.get("dynamic", {})
     cursor_section = gestures_yaml.get("cursor", {})
     cursor_recognition_section = cursor_section.get("recognition", {})
+    cursor_activation_section = cursor_section.get("activation", {})
     cursor_actions_section = gestures_yaml.get("cursor_actions", {})
     mediapipe_section = model_yaml.get("mediapipe", {})
 
@@ -188,10 +197,25 @@ def load_config(config_dir: str | Path | None = None) -> OilGesturesConfig:
     cursor_defaults = CursorConfig()
     cursor_gesture_defaults = CursorGestureConfig()
     cursor_actions_defaults = CursorActionsConfig()
+    cursor_toggle_defaults = GestureToggleConfig()
 
     model_path = str(mediapipe_section.get("model_path", media_defaults.model_path))
     if not Path(model_path).is_absolute():
         model_path = str(root / model_path)
+
+    gesture_model_path = str(
+        mediapipe_section.get("gesture_model_path", media_defaults.gesture_model_path)
+    )
+    if not Path(gesture_model_path).is_absolute():
+        gesture_model_path = str(root / gesture_model_path)
+
+    toggle_gesture_name = str(
+        cursor_activation_section.get("gesture", cursor_toggle_defaults.target.value)
+    )
+    try:
+        toggle_target = GestureName(toggle_gesture_name)
+    except ValueError:
+        toggle_target = cursor_toggle_defaults.target
 
     return OilGesturesConfig(
         camera=CameraConfig(
@@ -241,6 +265,7 @@ def load_config(config_dir: str | Path | None = None) -> OilGesturesConfig:
                 media_defaults.min_tracking_confidence,
             ),
             model_path=model_path,
+            gesture_model_path=gesture_model_path,
             input_width=max(
                 1,
                 _as_int(mediapipe_section.get("input_width"), media_defaults.input_width),
@@ -255,27 +280,6 @@ def load_config(config_dir: str | Path | None = None) -> OilGesturesConfig:
             min_confidence=_as_float(
                 static_section.get("min_confidence"),
                 static_defaults.min_confidence,
-            ),
-            rule_config=StaticRuleConfig(
-                ok_pinch_ratio=_as_float(
-                    static_section.get("ok_pinch_ratio"),
-                    static_defaults.rule_config.ok_pinch_ratio,
-                ),
-                finger_extension_margin=_as_float(
-                    static_section.get("finger_extension_margin"),
-                    static_defaults.rule_config.finger_extension_margin,
-                ),
-                fist_curl_margin=_as_float(
-                    static_section.get("fist_curl_margin"),
-                    static_defaults.rule_config.fist_curl_margin,
-                ),
-                open_palm_min_extended=max(
-                    1,
-                    _as_int(
-                        static_section.get("open_palm_min_extended"),
-                        static_defaults.rule_config.open_palm_min_extended,
-                    ),
-                ),
             ),
         ),
         dynamic=DynamicRecognizerConfig(
@@ -380,5 +384,26 @@ def load_config(config_dir: str | Path | None = None) -> OilGesturesConfig:
                 cursor_actions_defaults.cooldown_seconds,
             ),
             mapping=dict(cursor_actions_section.get("mapping", cursor_actions_defaults.mapping)),
+        ),
+        cursor_toggle=GestureToggleConfig(
+            enabled=_as_bool(
+                cursor_activation_section.get("enabled"),
+                cursor_toggle_defaults.enabled,
+            ),
+            target=toggle_target,
+            hold_seconds=max(
+                0.0,
+                _as_float(
+                    cursor_activation_section.get("hold_seconds"),
+                    cursor_toggle_defaults.hold_seconds,
+                ),
+            ),
+            cooldown_seconds=max(
+                0.0,
+                _as_float(
+                    cursor_activation_section.get("cooldown_seconds"),
+                    cursor_toggle_defaults.cooldown_seconds,
+                ),
+            ),
         ),
     )

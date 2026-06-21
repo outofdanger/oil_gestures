@@ -127,7 +127,7 @@ def test_action_mapper_maps_only_cursor_gestures() -> None:
     squeeze = mapper.map(_cursor_gesture(GestureName.INDEX_SQUEEZE, 123.0), position)
     middle_pinch = mapper.map(_cursor_gesture(GestureName.MIDDLE_PINCH, 123.0), position)
     static = mapper.map(
-        GestureResult(GestureName.OK_SIGN, 0.99, RecognitionSource.STATIC_RULES, 123.0),
+        GestureResult(GestureName.FIST, 0.99, RecognitionSource.MEDIAPIPE, 123.0),
         position,
     )
     dynamic = mapper.map(

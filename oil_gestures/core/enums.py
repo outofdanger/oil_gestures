@@ -9,10 +9,11 @@ class GestureName(str, Enum):
     UNKNOWN = "UNKNOWN"
     IDLE = "IDLE"
 
-    # Static gestures
+    # Static gestures (MediaPipe canned gestures)
     OPEN_PALM = "OPEN_PALM"
     FIST = "FIST"
-    OK_SIGN = "OK_SIGN"
+    THUMB_UP = "THUMB_UP"
+    VICTORY = "VICTORY"
 
     # Cursor gestures
     INDEX_MCP = "INDEX_MCP"
