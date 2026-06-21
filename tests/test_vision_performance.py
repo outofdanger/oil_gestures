@@ -49,6 +49,35 @@ def test_auto_fourcc_does_not_override_non_linux_camera(
     assert all(property_id != camera.cv2.CAP_PROP_FOURCC for property_id, _ in capture.settings)
 
 
+def test_threaded_camera_stream_yields_frames_and_terminates() -> None:
+    frames_to_serve = 5
+
+    class FakeCapture:
+        def __init__(self) -> None:
+            self.count = 0
+            self.released = False
+
+        def read(self):
+            if self.count >= frames_to_serve:
+                return (False, None)
+            self.count += 1
+            return (True, np.zeros((4, 6, 3), dtype=np.uint8))
+
+        def release(self) -> None:
+            self.released = True
+
+    stream = CameraStream(CameraConfig(threaded=True))
+    stream.capture = FakeCapture()
+    stream._start_capture_thread()
+
+    received = list(stream.frames())
+    stream.release()
+
+    assert received, "threaded capture should yield at least the latest frame"
+    assert all(isinstance(packet, FramePacket) for packet in received)
+    assert all((packet.width, packet.height) == (6, 4) for packet in received)
+
+
 def test_default_inference_frame_is_smaller_than_display_frame() -> None:
     config = load_config()
     frame = np.zeros((config.camera.height, config.camera.width, 3), dtype=np.uint8)

@@ -11,10 +11,16 @@ camera:
   mirror: true
   # AUTO selects MJPG on Linux/V4L2 and lets other platforms choose natively.
   preferred_fourcc: "AUTO"
+  # Capture frames on a background thread so camera I/O overlaps with inference.
+  threaded: true
 
 runtime:
   show_camera_feed: true
   show_landmarks: true
   show_debug_overlay: true
+  # Downscale the preview window before drawing/imshow (0 keeps the full frame).
+  # MediaPipe still receives the high-resolution capture; this only affects the
+  # on-screen preview, which is the main FPS cost on Linux.
+  preview_width: 960
   safe_exit_key: "q"
   window_name: "Oil Gestures"

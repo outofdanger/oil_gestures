@@ -19,6 +19,9 @@ DEFAULT_MIRROR_FRAME = True
 DEFAULT_CAMERA_FOURCC = "AUTO"
 LINUX_DEFAULT_CAMERA_FOURCC = "MJPG"
 MINIMUM_TARGET_FPS = 15.0
+# Capture frames on a background thread so camera I/O and MJPG decoding overlap
+# with MediaPipe inference instead of serializing with it.
+DEFAULT_CAMERA_THREADED = True
 
 # MediaPipe / hand landmarks
 DEFAULT_LANDMARK_COUNT = 21
@@ -79,6 +82,11 @@ DEFAULT_MOUSE_ACTION_COOLDOWN_SECONDS = 0.50
 DEFAULT_DEBUG_MODE = True
 DEFAULT_SAFE_EXIT_KEY = "q"
 DEFAULT_WINDOW_NAME = "Oil Gestures"
+# Downscale the preview window before drawing/imshow; the high-resolution capture
+# is still fed to MediaPipe. 0 keeps the full camera frame. Large preview blits
+# (especially via the Qt HighGUI backend under XWayland) dominate the frame
+# budget, so a smaller preview is the biggest single FPS win on Linux.
+DEFAULT_PREVIEW_WIDTH = 960
 DEFAULT_SHOW_CAMERA_FEED = True
 DEFAULT_SHOW_LANDMARKS = True
 DEFAULT_SHOW_DEBUG_OVERLAY = True

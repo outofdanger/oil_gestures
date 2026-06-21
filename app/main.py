@@ -156,15 +156,16 @@ def run(config: OilGesturesConfig) -> int:
         fps=config.camera.fps,
         preferred_fourcc=config.camera.preferred_fourcc,
     )
+    preview_width = config.runtime.preview_width or None
     frame_processor_config = FrameProcessorConfig(
-        width=None,
+        width=preview_width,
         height=None,
         mirror=config.camera.mirror,
     )
     inference_frame_processor_config = FrameProcessorConfig(
         width=config.mediapipe.input_width,
         height=config.mediapipe.input_height,
-        mirror=False,
+        mirror=config.camera.mirror,
     )
 
     fps_meter = FpsMeter()
@@ -194,8 +195,7 @@ def run(config: OilGesturesConfig) -> int:
 
         try:
             for frame_packet in camera.frames():
-                display_packet = process_frame(frame_packet, frame_processor_config)
-                inference_packet = process_frame(display_packet, inference_frame_processor_config)
+                inference_packet = process_frame(frame_packet, inference_frame_processor_config)
                 rgb_packet = bgr_to_rgb(inference_packet)
                 inference_started = time.perf_counter()
                 landmark_packet = landmarker.detect(rgb_packet)
@@ -221,13 +221,14 @@ def run(config: OilGesturesConfig) -> int:
                         "Performance: %.1f FPS, MediaPipe %.1f ms, camera %dx%d, inference %dx%d",
                         fps,
                         performance_meter.inference_ms,
-                        display_packet.width,
-                        display_packet.height,
+                        frame_packet.width,
+                        frame_packet.height,
                         inference_packet.width,
                         inference_packet.height,
                     )
 
                 if config.runtime.show_camera_feed:
+                    display_packet = process_frame(frame_packet, frame_processor_config)
                     if config.runtime.show_landmarks and landmark_packet.hand_detected:
                         draw_landmarks(
                             display_packet.frame,

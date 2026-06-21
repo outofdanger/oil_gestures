@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import platform
+import threading
 import time
 from dataclasses import dataclass
 from typing import Iterator
@@ -10,6 +11,7 @@ import cv2
 from oil_gestures.core.constants import (
     DEFAULT_CAMERA_ID,
     DEFAULT_CAMERA_FOURCC,
+    DEFAULT_CAMERA_THREADED,
     DEFAULT_FPS,
     DEFAULT_FRAME_HEIGHT,
     DEFAULT_FRAME_WIDTH,
@@ -35,12 +37,19 @@ class CameraConfig:
     fps: int = DEFAULT_FPS
     mirror: bool = DEFAULT_MIRROR_FRAME
     preferred_fourcc: str = DEFAULT_CAMERA_FOURCC
+    threaded: bool = DEFAULT_CAMERA_THREADED
 
 
 class CameraStream:
     def __init__(self, config: CameraConfig) -> None:
         self.config = config
         self.capture: cv2.VideoCapture | None = None
+        self._thread: threading.Thread | None = None
+        self._condition = threading.Condition()
+        self._latest_frame: FramePacket | None = None
+        self._frame_id = 0
+        self._seen_frame_id = 0
+        self._running = False
 
     def __enter__(self) -> "CameraStream":
         self.open()
@@ -71,8 +80,11 @@ class CameraStream:
                 "otherwise try 640x480@30 in configs/default.yaml.",
                 actual_fps,
             )
+        if self.config.threaded:
+            self._start_capture_thread()
 
     def release(self) -> None:
+        self._stop_capture_thread()
         if self.capture is not None:
             self.capture.release()
         self.capture = None
@@ -174,7 +186,53 @@ class CameraStream:
         height, width = frame.shape[:2]
         return FramePacket(frame=frame, width=width, height=height, timestamp=time.perf_counter())
 
+    def _start_capture_thread(self) -> None:
+        self._running = True
+        self._thread = threading.Thread(target=self._capture_loop, name="camera-capture", daemon=True)
+        self._thread.start()
+
+    def _stop_capture_thread(self) -> None:
+        if self._thread is None:
+            return
+        with self._condition:
+            self._running = False
+            self._condition.notify_all()
+        # read() blocks at most one frame interval, so a short join avoids any hang.
+        self._thread.join(timeout=2.0)
+        self._thread = None
+
+    def _capture_loop(self) -> None:
+        while self._running:
+            packet = self.read()
+            with self._condition:
+                if not self._running:
+                    break
+                if packet is None:
+                    # Camera stopped delivering frames; wake any waiting consumer.
+                    self._running = False
+                    self._condition.notify_all()
+                    break
+                self._latest_frame = packet
+                self._frame_id += 1
+                self._condition.notify_all()
+
+    def _threaded_frames(self) -> Iterator[FramePacket]:
+        while True:
+            with self._condition:
+                while self._running and self._frame_id == self._seen_frame_id:
+                    self._condition.wait(timeout=1.0)
+                if self._frame_id == self._seen_frame_id:
+                    # No new frame and the capture thread has stopped.
+                    return
+                self._seen_frame_id = self._frame_id
+                packet = self._latest_frame
+            if packet is not None:
+                yield packet
+
     def frames(self) -> Iterator[FramePacket]:
+        if self.config.threaded:
+            yield from self._threaded_frames()
+            return
         while True:
             packet = self.read()
             if packet is None:

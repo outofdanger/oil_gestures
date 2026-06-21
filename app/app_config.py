@@ -7,6 +7,7 @@ from typing import Any
 from oil_gestures.core.constants import (
     DEFAULT_CAMERA_ID,
     DEFAULT_CAMERA_FOURCC,
+    DEFAULT_CAMERA_THREADED,
     DEFAULT_CURSOR_BETA,
     DEFAULT_CURSOR_DEAD_ZONE_POINTS,
     DEFAULT_CURSOR_DERIVATIVE_CUTOFF,
@@ -35,6 +36,7 @@ from oil_gestures.core.constants import (
     DEFAULT_MODEL_COMPLEXITY,
     DEFAULT_MOUSE_ACTION_COOLDOWN_SECONDS,
     DEFAULT_POINTER_LANDMARK,
+    DEFAULT_PREVIEW_WIDTH,
     DEFAULT_SAFE_EXIT_KEY,
     DEFAULT_SHOW_CAMERA_FEED,
     DEFAULT_SHOW_DEBUG_OVERLAY,
@@ -64,6 +66,7 @@ class CameraConfig:
     fps: int = DEFAULT_FPS
     mirror: bool = DEFAULT_MIRROR_FRAME
     preferred_fourcc: str = DEFAULT_CAMERA_FOURCC
+    threaded: bool = DEFAULT_CAMERA_THREADED
 
 
 @dataclass(frozen=True)
@@ -72,6 +75,7 @@ class RuntimeConfig:
     show_camera_feed: bool = DEFAULT_SHOW_CAMERA_FEED
     show_landmarks: bool = DEFAULT_SHOW_LANDMARKS
     show_debug_overlay: bool = DEFAULT_SHOW_DEBUG_OVERLAY
+    preview_width: int = DEFAULT_PREVIEW_WIDTH
     safe_exit_key: str = DEFAULT_SAFE_EXIT_KEY
     window_name: str = DEFAULT_WINDOW_NAME
 
@@ -199,6 +203,7 @@ def load_config(config_dir: str | Path | None = None) -> OilGesturesConfig:
             preferred_fourcc=str(
                 camera_section.get("preferred_fourcc", camera_defaults.preferred_fourcc)
             ),
+            threaded=_as_bool(camera_section.get("threaded"), camera_defaults.threaded),
         ),
         runtime=RuntimeConfig(
             debug=_as_bool(app_section.get("debug"), runtime_defaults.debug),
@@ -213,6 +218,10 @@ def load_config(config_dir: str | Path | None = None) -> OilGesturesConfig:
             show_debug_overlay=_as_bool(
                 runtime_section.get("show_debug_overlay"),
                 runtime_defaults.show_debug_overlay,
+            ),
+            preview_width=max(
+                0,
+                _as_int(runtime_section.get("preview_width"), runtime_defaults.preview_width),
             ),
             safe_exit_key=str(runtime_section.get("safe_exit_key", runtime_defaults.safe_exit_key)),
             window_name=str(runtime_section.get("window_name", runtime_defaults.window_name)),
