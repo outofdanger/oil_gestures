@@ -111,14 +111,7 @@ class CursorPipeline:
             self._mark_action(action, timestamp)
             return True
 
-        if action in (CursorAction.SELECT, CursorAction.RIGHT_CLICK) and self.state.pressed:
-            self._release_held_button(timestamp, position)
-
-        if not self._action_ready(action, timestamp):
-            return False
-        self.mouse.execute(action, position)
-        self._mark_action(action, timestamp)
-        return True
+        return False
 
     def _set_action_status(self, result: CursorControlResult) -> None:
         if result.action == CursorAction.NONE:
@@ -132,8 +125,7 @@ class CursorPipeline:
     def process(
         self,
         packet: LandmarkPacket,
-        dynamic_gesture: GestureResult | None = None,
-        static_gesture: GestureResult | None = None,
+        cursor_gesture: GestureResult | None = None,
         paused: bool = False,
     ) -> CursorControlResult:
         if not packet.hand_detected or packet.landmarks is None:
@@ -163,14 +155,19 @@ class CursorPipeline:
             if screen_position is None or paused or not self.enabled:
                 self._release_held_button(packet.timestamp, screen_position)
             self.state.action_status = ""
-            return CursorControlResult(CursorAction.NONE, screen_position, GestureName.UNKNOWN, pointer.confidence, packet.timestamp)
+            return CursorControlResult(
+                CursorAction.NONE,
+                screen_position,
+                GestureName.UNKNOWN,
+                pointer.confidence,
+                packet.timestamp,
+            )
 
         smoothed_position = self.smoother.apply(screen_position)
         self.state.screen_position = smoothed_position
 
         result = self.action_mapper.map(
-            dynamic_result=dynamic_gesture,
-            static_result=static_gesture,
+            cursor_gesture=cursor_gesture,
             screen_position=smoothed_position,
             timestamp=packet.timestamp,
         )

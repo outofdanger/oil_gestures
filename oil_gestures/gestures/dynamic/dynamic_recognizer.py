@@ -1,22 +1,43 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
+from oil_gestures.core.constants import DEFAULT_DYNAMIC_CONFIDENCE_THRESHOLD, DEFAULT_SEQUENCE_LENGTH
+from oil_gestures.core.enums import RecognitionSource
 from oil_gestures.core.types import GestureResult, LandmarkPacket
-from oil_gestures.gestures.dynamic.rule_based_dynamic import RuleBasedDynamicConfig, RuleBasedDynamicRecognizer
+from oil_gestures.gestures.dynamic.dynamic_model import DynamicGestureModel
+
+
+@dataclass(frozen=True)
+class DynamicRecognizerConfig:
+    enabled: bool = True
+    sequence_length: int = DEFAULT_SEQUENCE_LENGTH
+    min_confidence: float = DEFAULT_DYNAMIC_CONFIDENCE_THRESHOLD
 
 
 class DynamicGestureRecognizer:
-    """
-    Facade for the dynamic gesture layer.
+    """Model-only dynamic recognition facade; it contains no cursor rules."""
 
-    A learned model can be plugged in later without changing app/runtime code.
-    For the MVP this delegates to the rule-based recognizer.
-    """
-
-    def __init__(self, rule_based: RuleBasedDynamicRecognizer | None = None) -> None:
-        self.rule_based = rule_based or RuleBasedDynamicRecognizer(RuleBasedDynamicConfig())
+    def __init__(
+        self,
+        config: DynamicRecognizerConfig | None = None,
+        model: DynamicGestureModel | None = None,
+    ) -> None:
+        self.config = config or DynamicRecognizerConfig()
+        self.model = model
 
     def reset(self) -> None:
-        self.rule_based.reset()
+        if self.model is not None:
+            self.model.reset()
 
     def update(self, packet: LandmarkPacket) -> GestureResult | None:
-        return self.rule_based.update(packet)
+        if not self.config.enabled or self.model is None:
+            return None
+        result = self.model.update(packet)
+        if (
+            result is None
+            or result.source != RecognitionSource.DYNAMIC_MODEL
+            or result.confidence < self.config.min_confidence
+        ):
+            return None
+        return result

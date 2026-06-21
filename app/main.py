@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from contextlib import ExitStack
 from dataclasses import replace
 from pathlib import Path
 
@@ -11,17 +12,26 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.app_config import OilGesturesConfig, load_config
-from oil_gestures.core.enums import GestureName
+from oil_gestures.core.constants import (
+    DEFAULT_SAFE_EXIT_KEY,
+    DEFAULT_STRICT_SCREEN_BOUNDS,
+    FPS_METER_SAMPLE_INTERVAL_SECONDS,
+    FPS_METER_SMOOTHING_ALPHA,
+    MOUSE_TEST_STEP_SECONDS,
+    MOUSE_TEST_TARGETS,
+    OPENCV_ESCAPE_KEY_CODE,
+    PAUSE_KEY_CHARACTERS,
+)
 from oil_gestures.core.logger import get_logger
 from oil_gestures.core.types import ScreenPosition
 from oil_gestures.cursor.action_mapper import CursorActionMapper
-from oil_gestures.cursor.feature_toggle import CursorFeatureToggle, CursorFeatureToggleConfig
 from oil_gestures.cursor.cursor_pipeline import CursorPipeline
 from oil_gestures.cursor.cursor_smoothing import CursorSmoother, CursorSmoothingConfig
 from oil_gestures.cursor.hand_pointer import HandPointer, HandPointerConfig
 from oil_gestures.cursor.mouse_controller import MouseController, MouseControllerConfig
 from oil_gestures.cursor.screen_mapper import ScreenMapper, ScreenMapperConfig
-from oil_gestures.gestures.dynamic.rule_based_dynamic import RuleBasedDynamicRecognizer
+from oil_gestures.gestures.cursor.cursor_recognizer import CursorGestureRecognizer
+from oil_gestures.gestures.dynamic.dynamic_recognizer import DynamicGestureRecognizer
 from oil_gestures.gestures.static.static_recognizer import StaticGestureRecognizer
 
 
@@ -38,9 +48,13 @@ class FpsMeter:
         self.frame_count += 1
         now = time.perf_counter()
         elapsed = now - self.last_time
-        if elapsed >= 0.5:
+        if elapsed >= FPS_METER_SAMPLE_INTERVAL_SECONDS:
             current = self.frame_count / elapsed
-            self.average = current if self.average == 0.0 else self.average + (current - self.average) * 0.25
+            self.average = (
+                current
+                if self.average == 0.0
+                else self.average + (current - self.average) * FPS_METER_SMOOTHING_ALPHA
+            )
             self.frame_count = 0
             self.last_time = now
         return self.average
@@ -56,7 +70,7 @@ def build_cursor_pipeline(config: OilGesturesConfig) -> CursorPipeline:
             invert_y=config.cursor.invert_y,
             fallback_width=config.camera.width,
             fallback_height=config.camera.height,
-            strict_screen_bounds=False,
+            strict_screen_bounds=DEFAULT_STRICT_SCREEN_BOUNDS,
         )
     )
     smoother = CursorSmoother(
@@ -69,10 +83,7 @@ def build_cursor_pipeline(config: OilGesturesConfig) -> CursorPipeline:
             max_speed_points_per_second=config.cursor.max_speed_points_per_second,
         )
     )
-    action_mapper = CursorActionMapper.from_strings(
-        dynamic_mapping=config.cursor_actions.dynamic_mapping,
-        static_fallback_mapping=config.cursor_actions.static_fallback_mapping,
-    )
+    action_mapper = CursorActionMapper.from_strings(config.cursor_actions.mapping)
     mouse = MouseController(MouseControllerConfig(dry_run=config.cursor.dry_run))
     return CursorPipeline(
         hand_pointer=hand_pointer,
@@ -84,17 +95,6 @@ def build_cursor_pipeline(config: OilGesturesConfig) -> CursorPipeline:
         lost_reset_seconds=config.cursor.lost_reset_seconds,
         action_cooldown_seconds=config.cursor_actions.cooldown_seconds,
         enabled=config.cursor.enabled,
-    )
-
-
-def build_cursor_toggle(config: OilGesturesConfig) -> CursorFeatureToggle:
-    return CursorFeatureToggle(
-        CursorFeatureToggleConfig(
-            initial_enabled=config.cursor.enabled,
-            toggle_gesture=GestureName(config.cursor.toggle_gesture),
-            min_confidence=config.cursor.toggle_min_confidence,
-            cooldown_seconds=config.cursor.toggle_cooldown_seconds,
-        )
     )
 
 
@@ -112,8 +112,8 @@ def run(config: OilGesturesConfig) -> int:
         logger.info("Dry-run mode: real OS mouse is disabled. Use --real-mouse to move/click the mouse.")
         mouse_status = "DRY-RUN"
     else:
-        mouse_status = "REAL"
-        logger.info("Real mouse mode is enabled.")
+        mouse_status = f"REAL {pipeline.mouse.backend_name.upper()}"
+        logger.info("Real mouse mode is enabled with the %s backend.", pipeline.mouse.backend_name)
 
     mouse_permission = pipeline.mouse.accessibility_status()
     if mouse_permission is False and not config.cursor.dry_run:
@@ -140,19 +140,25 @@ def run(config: OilGesturesConfig) -> int:
 
     fps_meter = FpsMeter()
     static_recognizer = StaticGestureRecognizer(config.static)
-    dynamic_recognizer = RuleBasedDynamicRecognizer(config.dynamic)
-    cursor_toggle = build_cursor_toggle(config)
-    pipeline.enabled = cursor_toggle.enabled
+    dynamic_recognizer = DynamicGestureRecognizer(config.dynamic)
+    cursor_recognizer = CursorGestureRecognizer(config.cursor_gestures)
+    pipeline.enabled = config.cursor.enabled
     paused = False
-    safe_exit = ord(config.runtime.safe_exit_key[:1] or "q")
+    safe_exit = ord(config.runtime.safe_exit_key[:1] or DEFAULT_SAFE_EXIT_KEY)
+    pause_keys = tuple(ord(character) for character in PAUSE_KEY_CHARACTERS)
 
-    with CameraStream(camera_config) as camera, MediaPipeHandLandmarker(
-        model_path=config.mediapipe.model_path,
-        max_hands=config.mediapipe.max_hands,
-        model_complexity=config.mediapipe.model_complexity,
-        min_detection_confidence=config.mediapipe.min_detection_confidence,
-        min_tracking_confidence=config.mediapipe.min_tracking_confidence,
-    ) as landmarker:
+    with ExitStack() as stack:
+        stack.callback(pipeline.mouse.close)
+        camera = stack.enter_context(CameraStream(camera_config))
+        landmarker = stack.enter_context(
+            MediaPipeHandLandmarker(
+                model_path=config.mediapipe.model_path,
+                max_hands=config.mediapipe.max_hands,
+                model_complexity=config.mediapipe.model_complexity,
+                min_detection_confidence=config.mediapipe.min_detection_confidence,
+                min_tracking_confidence=config.mediapipe.min_tracking_confidence,
+            )
+        )
         if config.runtime.show_camera_feed:
             cv2.namedWindow(config.runtime.window_name, cv2.WINDOW_NORMAL)
 
@@ -163,26 +169,16 @@ def run(config: OilGesturesConfig) -> int:
                 landmark_packet = landmarker.detect(rgb_packet)
                 static_gesture = static_recognizer.update(landmark_packet)
                 dynamic_gesture = dynamic_recognizer.update(landmark_packet)
-                toggle_result = cursor_toggle.update(
-                    (dynamic_gesture, static_gesture),
-                    landmark_packet.timestamp,
-                )
-                if toggle_result.toggled:
-                    pipeline.enabled = cursor_toggle.enabled
-                    pipeline.reset()
-                    logger.info(
-                        "Cursor control %s by %s",
-                        "enabled" if cursor_toggle.enabled else "disabled",
-                        toggle_result.source_gesture.value,
-                    )
+                if pipeline.enabled:
+                    cursor_gesture = cursor_recognizer.update(landmark_packet)
                 else:
-                    pipeline.enabled = cursor_toggle.enabled
+                    cursor_recognizer.reset()
+                    cursor_gesture = None
 
                 result = pipeline.process(
                     landmark_packet,
-                    dynamic_gesture=dynamic_gesture,
-                    static_gesture=static_gesture,
-                    paused=paused or not cursor_toggle.enabled,
+                    cursor_gesture=cursor_gesture,
+                    paused=paused,
                 )
                 fps = fps_meter.update()
 
@@ -198,7 +194,7 @@ def run(config: OilGesturesConfig) -> int:
                         draw_pointer_cursor(
                             display_packet.frame,
                             pipeline.state.pointer,
-                            pressed=pipeline.state.pressed or dynamic_recognizer.pressed,
+                            pressed=pipeline.state.pressed or cursor_recognizer.index_pressed,
                         )
 
                     if config.runtime.show_debug_overlay:
@@ -206,13 +202,14 @@ def run(config: OilGesturesConfig) -> int:
                             status = "PAUSED"
                         elif not landmark_packet.hand_detected:
                             status = "NO HAND"
-                        elif cursor_toggle.enabled:
+                        elif pipeline.enabled:
                             status = "CURSOR ON"
                         else:
                             status = "GESTURE RECOGNITION"
-                        gesture_status = dynamic_gesture.name.value if dynamic_gesture is not None else ""
-                        if static_gesture is not None:
-                            gesture_status = f"{gesture_status} | {static_gesture.name.value}".strip(" |")
+                        gestures = (dynamic_gesture, static_gesture, cursor_gesture)
+                        gesture_status = " | ".join(
+                            gesture.name.value for gesture in gestures if gesture is not None
+                        )
                         draw_overlay(
                             display_packet.frame,
                             status=status,
@@ -220,8 +217,8 @@ def run(config: OilGesturesConfig) -> int:
                             screen_position=result.screen_position,
                             action_status=pipeline.state.action_status,
                             gesture_status=gesture_status,
-                            feature_status="cursor ON" if cursor_toggle.enabled else "cursor OFF",
-                            pressed=pipeline.state.pressed or dynamic_recognizer.pressed,
+                            feature_status="cursor ON" if pipeline.enabled else "cursor OFF",
+                            pressed=pipeline.state.pressed or cursor_recognizer.index_pressed,
                             mouse_status=mouse_status,
                             fps=fps,
                             paused=paused,
@@ -232,17 +229,17 @@ def run(config: OilGesturesConfig) -> int:
                 else:
                     key = cv2.waitKey(1) & 0xFF
 
-                if key in (27, safe_exit):
+                if key in (OPENCV_ESCAPE_KEY_CODE, safe_exit):
                     break
-                if key in (ord(" "), ord("p")):
+                if key in pause_keys:
                     paused = not paused
                     pipeline.reset()
                     dynamic_recognizer.reset()
+                    cursor_recognizer.reset()
 
         finally:
             pipeline.reset()
             cv2.destroyAllWindows()
-            pipeline.mouse.reassociate_hardware_mouse()
 
     return 0
 
@@ -262,15 +259,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def print_mouse_diagnostics(config: OilGesturesConfig) -> int:
     pipeline = build_cursor_pipeline(config)
-    diagnostics = pipeline.mouse.diagnostics()
-    print("Mouse diagnostics")
-    for key, value in diagnostics.items():
-        print(f"{key}: {value}")
-    print(f"screen_bounds: {pipeline.screen_mapper.bounds}")
-    print(f"pointer_source: {config.cursor.pointer_source}")
-    print(f"dry_run_config: {config.cursor.dry_run}")
-    print(f"cursor_initially_enabled: {config.cursor.enabled}")
-    print(f"cursor_toggle_gesture: {config.cursor.toggle_gesture}")
+    try:
+        diagnostics = pipeline.mouse.diagnostics()
+        print("Mouse diagnostics")
+        for key, value in diagnostics.items():
+            print(f"{key}: {value}")
+        print(f"screen_bounds: {pipeline.screen_mapper.bounds}")
+        print(f"pointer_source: {config.cursor.pointer_source}")
+        print(f"dry_run_config: {config.cursor.dry_run}")
+        print(f"cursor_initially_enabled: {config.cursor.enabled}")
+        print(f"cursor_recognition_enabled: {config.cursor_gestures.enabled}")
+    finally:
+        pipeline.mouse.close()
     return 0
 
 
@@ -280,20 +280,25 @@ def test_mouse_move(config: OilGesturesConfig) -> int:
     bounds = pipeline.screen_mapper.bounds
     now = time.perf_counter()
     targets = [
-        ScreenPosition(int(bounds.x + bounds.width * 0.50), int(bounds.y + bounds.height * 0.50), now),
-        ScreenPosition(int(bounds.x + bounds.width * 0.60), int(bounds.y + bounds.height * 0.50), now + 0.2),
-        ScreenPosition(int(bounds.x + bounds.width * 0.50), int(bounds.y + bounds.height * 0.60), now + 0.4),
-        ScreenPosition(int(bounds.x + bounds.width * 0.50), int(bounds.y + bounds.height * 0.50), now + 0.6),
+        ScreenPosition(
+            int(bounds.x + bounds.width * x_ratio),
+            int(bounds.y + bounds.height * y_ratio),
+            now + index * MOUSE_TEST_STEP_SECONDS,
+        )
+        for index, (x_ratio, y_ratio) in enumerate(MOUSE_TEST_TARGETS)
     ]
 
-    print("Trying direct mouse movement")
-    print(f"dry_run: {mouse.config.dry_run}")
-    print(f"accessibility: {mouse.accessibility_status()}")
-    print(f"bounds: {bounds}")
-    for target in targets:
-        result = mouse.move_to(target)
-        print(f"MOVE {target.x},{target.y} executed={result.executed} position={mouse.get_position()}")
-        time.sleep(0.2)
+    try:
+        print("Trying direct mouse movement")
+        print(f"dry_run: {mouse.config.dry_run}")
+        print(f"accessibility: {mouse.accessibility_status()}")
+        print(f"bounds: {bounds}")
+        for target in targets:
+            result = mouse.move_to(target)
+            print(f"MOVE {target.x},{target.y} executed={result.executed} position={mouse.get_position()}")
+            time.sleep(MOUSE_TEST_STEP_SECONDS)
+    finally:
+        mouse.close()
     return 0
 
 
@@ -322,10 +327,15 @@ def main() -> int:
             static=config.static,
             dynamic=config.dynamic,
             cursor=replace(config.cursor, **cursor_overrides),
+            cursor_gestures=config.cursor_gestures,
             cursor_actions=config.cursor_actions,
         )
     if args.request_permission:
-        build_cursor_pipeline(config).mouse.request_accessibility_prompt()
+        permission_pipeline = build_cursor_pipeline(config)
+        try:
+            permission_pipeline.mouse.request_accessibility_prompt()
+        finally:
+            permission_pipeline.mouse.close()
 
     if args.mouse_diagnostics:
         return print_mouse_diagnostics(config)

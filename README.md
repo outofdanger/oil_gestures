@@ -5,20 +5,23 @@ Webcam-based gesture recognition for oil-simulator demos.
 The core product is the gesture-recognition pipeline:
 
 ```text
-Camera -> MediaPipe landmarks -> static gestures -> dynamic gestures -> commands/features
+Camera -> MediaPipe landmarks -> independent recognizers -> commands/features
 ```
 
 MediaPipe is the single source of hand landmarks. Cursor control is an optional
-feature on top of recognized gestures; it is not the main runtime mode.
+secondary subsystem with its own recognizer; it does not consume static or
+learned dynamic gesture results as mouse actions.
 
 ## Current Features
 
 - Static gesture recognizer for `OPEN_PALM`, `FIST`, and `OK_SIGN`.
-- Rule-based dynamic recognizer for `POINTING_INDEX`, `SQUEEZE`, `RELEASE`,
-  `MIDDLE_PINCH`, `ROTATE_CLOCKWISE`, and `ROTATE_COUNTERCLOCKWISE`.
-- Optional cursor-control feature that can be toggled by gesture.
+- Model-only dynamic-recognition interface, ready for a learned model.
+- Isolated rule-based cursor recognizer for `INDEX_MCP`, `INDEX_SQUEEZE`,
+  `INDEX_RELEASE`, and `MIDDLE_PINCH`.
+- Optional cursor-control feature, initially disabled and manually testable with `--cursor-on`.
 - Safe cursor dry-run by default: real OS mouse movement is disabled unless
   explicitly requested.
+- Real cursor control on macOS, Windows, and Linux/X11.
 - `scripts/check_camera.py` checks camera + MediaPipe landmarks only.
 - `scripts/run_demo.py` runs the gesture-recognition demo and optional cursor feature.
 
@@ -30,8 +33,8 @@ app/
   main.py              Runtime composition and OpenCV loop
 oil_gestures/
   vision/              Camera, MediaPipe, drawing, landmark helpers
-  gestures/            Static/dynamic gesture recognizers and decision helpers
-  cursor/              Optional pointer extraction, screen mapping, mouse actions
+  gestures/            Independent static, dynamic-model, and cursor recognizers
+  cursor/              Pointer mapping plus platform-neutral mouse facade/backends
   commands/            Gesture-to-command mapping
 configs/               YAML runtime defaults
 assets/models/         Local model files
@@ -48,16 +51,21 @@ python3 -m pip install -r requirements.txt
 macOS needs Camera permission for the app that runs Python. Accessibility
 permission is needed only when real mouse control is intentionally enabled.
 
+On Linux, camera capture prefers V4L2 and real cursor control uses X11/XTest.
+Native Wayland sessions continue to support recognition and cursor dry-run, but
+global mouse injection requires logging in with an X11/Xorg session.
+
 ## Run
 
-Gesture recognition with cursor feature initially off:
+Gesture recognition with the secondary cursor subsystem initially off:
 
 ```bash
 python3 scripts/run_demo.py
 ```
 
-Use the configured toggle gesture, default `MIDDLE_PINCH`, to turn cursor control
-on or off while the demo is running.
+Automatic activation by a learned dynamic gesture is intentionally left for a
+later integration. `MIDDLE_PINCH` is recognized by the cursor subsystem but does
+not toggle it.
 
 Start with cursor feature on, still in safe dry-run mode:
 
@@ -75,4 +83,10 @@ Run mouse diagnostics:
 
 ```bash
 python3 app/main.py --mouse-diagnostics
+```
+
+On Linux, verify the real X11 backend before starting the camera:
+
+```bash
+python3 app/main.py --mouse-diagnostics --real-mouse
 ```

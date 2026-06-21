@@ -1,5 +1,12 @@
-mediapipe
-opencv-python
-numpy
-PyYAML
-pyobjc-framework-Quartz; sys_platform == "darwin"
+# Direct runtime dependencies. Tested with CPython 3.9.6.
+mediapipe==0.10.35
+
+# MediaPipe depends on the contrib distribution. Do not install opencv-python
+# alongside it: both packages provide the same cv2 module.
+opencv-contrib-python==4.13.0.92
+numpy==2.0.2
+PyYAML==6.0.3
+
+# Platform-specific cursor backends.
+pyobjc-framework-Quartz==11.1; sys_platform == "darwin"
+python-xlib==0.33; sys_platform == "linux"

@@ -8,11 +8,11 @@ from app.app_config import load_config
 from oil_gestures.core.enums import CursorAction, GestureName, Handedness, MouseAction, RecognitionSource
 from oil_gestures.core.types import GestureResult, LandmarkPacket, ScreenPosition
 from oil_gestures.cursor.action_mapper import CursorActionMapper
-from oil_gestures.cursor.feature_toggle import CursorFeatureToggle, CursorFeatureToggleConfig
 from oil_gestures.cursor.cursor_pipeline import CursorPipeline
 from oil_gestures.cursor.hand_pointer import HandPointer, HandPointerConfig
 from oil_gestures.cursor.mouse_controller import MouseController, MouseControllerConfig
-from oil_gestures.gestures.dynamic.rule_based_dynamic import RuleBasedDynamicConfig, RuleBasedDynamicRecognizer
+from oil_gestures.gestures.cursor.cursor_recognizer import CursorGestureConfig, CursorGestureRecognizer
+from oil_gestures.gestures.dynamic.dynamic_recognizer import DynamicGestureRecognizer
 
 
 @dataclass
@@ -82,12 +82,8 @@ def _packet(timestamp: float, landmarks: list[Landmark] | None = None) -> Landma
     return LandmarkPacket(landmarks is not None, landmarks, Handedness.UNKNOWN, 0.9, timestamp)
 
 
-def _gesture(name: GestureName, timestamp: float) -> GestureResult:
-    return GestureResult(name, 0.9, RecognitionSource.DYNAMIC_RULES, timestamp)
-
-
-def _static_gesture(name: GestureName, timestamp: float) -> GestureResult:
-    return GestureResult(name, 0.9, RecognitionSource.STATIC_RULES, timestamp)
+def _cursor_gesture(name: GestureName, timestamp: float) -> GestureResult:
+    return GestureResult(name, 0.9, RecognitionSource.CURSOR_RULES, timestamp)
 
 
 def _cursor_pipeline(
@@ -120,148 +116,126 @@ def test_hand_pointer_default_uses_index_mcp_point_5() -> None:
     assert result.y == landmarks[5].y
 
 
-def test_action_mapper_prefers_dynamic_gesture() -> None:
+def test_action_mapper_maps_only_cursor_gestures() -> None:
     mapper = CursorActionMapper()
     position = ScreenPosition(100, 200, 123.0)
-    dynamic = GestureResult(GestureName.SQUEEZE, 0.88, RecognitionSource.DYNAMIC_RULES, 123.0)
-    static = GestureResult(GestureName.OK_SIGN, 0.99, RecognitionSource.STATIC_RULES, 123.0)
 
-    result = mapper.map(dynamic_result=dynamic, static_result=static, screen_position=position)
-
-    assert result.action == CursorAction.GRAB
-    assert result.source_gesture == GestureName.SQUEEZE
-    assert result.screen_position == position
-
-
-def test_action_mapper_uses_static_fallback() -> None:
-    mapper = CursorActionMapper()
-    static = GestureResult(GestureName.OK_SIGN, 0.91, RecognitionSource.STATIC_RULES, 123.0)
-
-    result = mapper.map(static_result=static)
-
-    assert result.action == CursorAction.SELECT
-    assert result.source_gesture == GestureName.OK_SIGN
-
-
-def test_action_mapper_maps_rotation_to_pressure() -> None:
-    mapper = CursorActionMapper()
-    clockwise = GestureResult(GestureName.ROTATE_CLOCKWISE, 0.8, RecognitionSource.DYNAMIC_RULES, 123.0)
-    counterclockwise = GestureResult(
-        GestureName.ROTATE_COUNTERCLOCKWISE,
-        0.8,
-        RecognitionSource.DYNAMIC_RULES,
-        124.0,
+    squeeze = mapper.map(_cursor_gesture(GestureName.INDEX_SQUEEZE, 123.0), position)
+    static = mapper.map(
+        GestureResult(GestureName.OK_SIGN, 0.99, RecognitionSource.STATIC_RULES, 123.0),
+        position,
+    )
+    dynamic = mapper.map(
+        GestureResult(GestureName.INDEX_SQUEEZE, 0.99, RecognitionSource.DYNAMIC_MODEL, 123.0),
+        position,
     )
 
-    assert mapper.map(dynamic_result=clockwise).action == CursorAction.INCREASE_PRESSURE
-    assert mapper.map(dynamic_result=counterclockwise).action == CursorAction.DECREASE_PRESSURE
+    assert squeeze.action == CursorAction.GRAB
+    assert squeeze.source_gesture == GestureName.INDEX_SQUEEZE
+    assert static.action == CursorAction.NONE
+    assert static.source_gesture == GestureName.UNKNOWN
+    assert dynamic.action == CursorAction.NONE
 
 
-def test_action_mapper_does_not_use_middle_pinch_as_cursor_action() -> None:
-    mapper = CursorActionMapper()
-    gesture = GestureResult(GestureName.MIDDLE_PINCH, 0.8, RecognitionSource.DYNAMIC_RULES, 123.0)
-
-    result = mapper.map(dynamic_result=gesture)
+def test_middle_pinch_is_recognized_but_has_no_cursor_action() -> None:
+    result = CursorActionMapper().map(_cursor_gesture(GestureName.MIDDLE_PINCH, 123.0))
 
     assert result.action == CursorAction.NONE
     assert result.source_gesture == GestureName.UNKNOWN
 
 
-def test_action_mapper_rejects_drag_mapping_for_this_issue() -> None:
-    with pytest.raises(ValueError, match="DRAG"):
-        CursorActionMapper.from_strings({"SQUEEZE": "DRAG"}, {})
+def test_old_cursor_gesture_names_are_not_accepted() -> None:
+    with pytest.raises(ValueError):
+        CursorActionMapper.from_strings({"SQUEEZE": "GRAB"})
 
 
-def test_dynamic_recognizer_produces_pointing_index_for_detected_hand() -> None:
-    config = RuleBasedDynamicConfig(enabled=True)
+def test_cursor_recognizer_produces_index_mcp_for_detected_hand() -> None:
     packet = LandmarkPacket(True, _open_hand(), Handedness.UNKNOWN, 0.9, 123.0)
 
-    result = RuleBasedDynamicRecognizer(config).update(packet)
+    result = CursorGestureRecognizer().update(packet)
 
     assert result is not None
-    assert result.name == GestureName.POINTING_INDEX
-    assert result.source == RecognitionSource.DYNAMIC_RULES
+    assert result.name == GestureName.INDEX_MCP
+    assert result.source == RecognitionSource.CURSOR_RULES
 
 
-def test_dynamic_recognizer_tracks_press_transitions() -> None:
-    config = RuleBasedDynamicConfig(enabled=True, pinch_tracking_enabled=True)
-    recognizer = RuleBasedDynamicRecognizer(config)
+def test_cursor_recognizer_tracks_index_press_transitions() -> None:
+    recognizer = CursorGestureRecognizer(CursorGestureConfig(index_pinch_tracking_enabled=True))
     landmarks = _open_hand()
-    packet = LandmarkPacket(True, landmarks, Handedness.UNKNOWN, 0.9, 123.0)
 
-    assert recognizer.update(packet).name == GestureName.POINTING_INDEX
+    assert recognizer.update(_packet(123.0, landmarks)).name == GestureName.INDEX_MCP
 
     landmarks[4] = Landmark(0.50, 0.10)
     landmarks[8] = Landmark(0.51, 0.10)
-    packet = LandmarkPacket(True, landmarks, Handedness.UNKNOWN, 0.9, 124.0)
-    assert recognizer.update(packet).name == GestureName.SQUEEZE
-    assert recognizer.pressed
+    assert recognizer.update(_packet(124.0, landmarks)).name == GestureName.INDEX_SQUEEZE
+    assert recognizer.index_pressed
 
-    packet = LandmarkPacket(True, landmarks, Handedness.UNKNOWN, 0.9, 125.0)
-    assert recognizer.update(packet).name == GestureName.POINTING_INDEX
+    assert recognizer.update(_packet(125.0, landmarks)).name == GestureName.INDEX_MCP
 
     landmarks[8] = Landmark(0.80, 0.10)
-    packet = LandmarkPacket(True, landmarks, Handedness.UNKNOWN, 0.9, 126.0)
-    assert recognizer.update(packet).name == GestureName.RELEASE
-    assert not recognizer.pressed
+    assert recognizer.update(_packet(126.0, landmarks)).name == GestureName.INDEX_RELEASE
+    assert not recognizer.index_pressed
 
 
-def test_dynamic_recognizer_tracks_middle_pinch_toggle_gesture() -> None:
-    config = RuleBasedDynamicConfig(enabled=True, middle_pinch_tracking_enabled=True)
-    recognizer = RuleBasedDynamicRecognizer(config)
+def test_cursor_recognizer_tracks_middle_pinch_without_toggling_state() -> None:
+    recognizer = CursorGestureRecognizer(CursorGestureConfig(middle_pinch_tracking_enabled=True))
     landmarks = _open_hand()
-
     landmarks[4] = Landmark(0.60, 0.10)
     landmarks[8] = Landmark(0.25, 0.10)
     landmarks[12] = Landmark(0.61, 0.10)
-    packet = LandmarkPacket(True, landmarks, Handedness.UNKNOWN, 0.9, 124.0)
-    assert recognizer.update(packet).name == GestureName.MIDDLE_PINCH
-    assert recognizer.middle_pressed
 
-    packet = LandmarkPacket(True, landmarks, Handedness.UNKNOWN, 0.9, 125.0)
-    assert recognizer.update(packet).name == GestureName.POINTING_INDEX
+    assert recognizer.update(_packet(124.0, landmarks)).name == GestureName.MIDDLE_PINCH
+    assert recognizer.middle_pressed
+    assert recognizer.update(_packet(125.0, landmarks)).name == GestureName.INDEX_MCP
 
     landmarks[12] = Landmark(0.90, 0.10)
-    packet = LandmarkPacket(True, landmarks, Handedness.UNKNOWN, 0.9, 126.0)
-    assert recognizer.update(packet).name == GestureName.POINTING_INDEX
+    assert recognizer.update(_packet(126.0, landmarks)).name == GestureName.INDEX_MCP
     assert not recognizer.middle_pressed
 
 
-def test_dynamic_recognizer_resets_button_state_when_hand_is_lost() -> None:
-    config = RuleBasedDynamicConfig(enabled=True, middle_pinch_tracking_enabled=True)
-    recognizer = RuleBasedDynamicRecognizer(config)
-    recognizer.pressed = True
+def test_cursor_recognizer_resets_when_hand_is_lost() -> None:
+    recognizer = CursorGestureRecognizer()
+    recognizer.index_pressed = True
     recognizer.middle_pressed = True
 
     assert recognizer.update(_packet(200.0, None)) is None
-    assert not recognizer.pressed
+    assert not recognizer.index_pressed
     assert not recognizer.middle_pressed
 
 
-def test_cursor_feature_toggle_uses_gesture_without_mouse_action() -> None:
-    toggle = CursorFeatureToggle(
-        CursorFeatureToggleConfig(
-            initial_enabled=False,
-            toggle_gesture=GestureName.MIDDLE_PINCH,
-            cooldown_seconds=0.5,
-        )
-    )
+def test_general_dynamic_recognizer_has_no_rule_based_cursor_fallback() -> None:
+    packet = LandmarkPacket(True, _open_hand(), Handedness.UNKNOWN, 0.9, 123.0)
 
-    first = toggle.update([_gesture(GestureName.MIDDLE_PINCH, 1.0)], 1.0)
-    blocked = toggle.update([_gesture(GestureName.MIDDLE_PINCH, 1.2)], 1.2)
-    second = toggle.update([_gesture(GestureName.MIDDLE_PINCH, 1.6)], 1.6)
+    assert DynamicGestureRecognizer().update(packet) is None
 
-    assert first.toggled and first.enabled
-    assert not blocked.toggled and blocked.enabled
-    assert second.toggled and not second.enabled
+
+def test_general_dynamic_recognizer_accepts_only_dynamic_model_results() -> None:
+    class Model:
+        def __init__(self, source: RecognitionSource) -> None:
+            self.source = source
+
+        def update(self, packet: LandmarkPacket) -> GestureResult:
+            return GestureResult(GestureName.IDLE, 0.9, self.source, packet.timestamp)
+
+        def reset(self) -> None:
+            pass
+
+    packet = LandmarkPacket(True, _open_hand(), Handedness.UNKNOWN, 0.9, 123.0)
+
+    accepted = DynamicGestureRecognizer(model=Model(RecognitionSource.DYNAMIC_MODEL)).update(packet)
+    rejected = DynamicGestureRecognizer(model=Model(RecognitionSource.CURSOR_RULES)).update(packet)
+
+    assert accepted is not None
+    assert accepted.name == GestureName.IDLE
+    assert rejected is None
 
 
 def test_cursor_pipeline_does_not_repeat_mouse_down_while_pressed() -> None:
     mouse = RecordingMouse()
     pipeline = _cursor_pipeline(mouse)
 
-    pipeline.process(_packet(1.0, _open_hand()), dynamic_gesture=_gesture(GestureName.SQUEEZE, 1.0))
-    pipeline.process(_packet(1.1, _open_hand()), dynamic_gesture=_gesture(GestureName.SQUEEZE, 1.1))
+    pipeline.process(_packet(1.0, _open_hand()), _cursor_gesture(GestureName.INDEX_SQUEEZE, 1.0))
+    pipeline.process(_packet(1.1, _open_hand()), _cursor_gesture(GestureName.INDEX_SQUEEZE, 1.1))
 
     assert mouse.executed == [CursorAction.GRAB]
     assert pipeline.state.pressed
@@ -271,22 +245,11 @@ def test_cursor_pipeline_releases_mouse_when_hand_is_lost() -> None:
     mouse = RecordingMouse()
     pipeline = _cursor_pipeline(mouse)
 
-    pipeline.process(_packet(1.0, _open_hand()), dynamic_gesture=_gesture(GestureName.SQUEEZE, 1.0))
+    pipeline.process(_packet(1.0, _open_hand()), _cursor_gesture(GestureName.INDEX_SQUEEZE, 1.0))
     pipeline.process(_packet(1.1, None))
 
     assert mouse.executed == [CursorAction.GRAB, CursorAction.RELEASE]
     assert not pipeline.state.pressed
-
-
-def test_cursor_pipeline_debounces_repeated_selects() -> None:
-    mouse = RecordingMouse()
-    pipeline = _cursor_pipeline(mouse, cooldown=0.5)
-
-    pipeline.process(_packet(1.0, _open_hand()), static_gesture=_static_gesture(GestureName.OK_SIGN, 1.0))
-    pipeline.process(_packet(1.2, _open_hand()), static_gesture=_static_gesture(GestureName.OK_SIGN, 1.2))
-    pipeline.process(_packet(1.6, _open_hand()), static_gesture=_static_gesture(GestureName.OK_SIGN, 1.6))
-
-    assert mouse.executed == [CursorAction.SELECT, CursorAction.SELECT]
 
 
 def test_cursor_pipeline_disabled_does_not_execute_cursor_actions() -> None:
@@ -294,8 +257,7 @@ def test_cursor_pipeline_disabled_does_not_execute_cursor_actions() -> None:
     pipeline = _cursor_pipeline(mouse)
     pipeline.enabled = False
 
-    pipeline.process(_packet(1.0, _open_hand()), dynamic_gesture=_gesture(GestureName.SQUEEZE, 1.0))
-    pipeline.process(_packet(1.1, _open_hand()), dynamic_gesture=_gesture(GestureName.SQUEEZE, 1.1))
+    pipeline.process(_packet(1.0, _open_hand()), _cursor_gesture(GestureName.INDEX_SQUEEZE, 1.0))
 
     assert mouse.executed == []
     assert not pipeline.state.pressed
@@ -312,9 +274,14 @@ def test_mouse_controller_reports_move_while_left_button_is_down() -> None:
     assert mouse.move_to(ScreenPosition(50, 60, 1.3)).action == MouseAction.MOVE
 
 
-def test_loaded_config_is_safe_and_gesture_first_by_default() -> None:
+def test_loaded_config_keeps_cursor_secondary_and_isolated() -> None:
     config = load_config()
 
     assert config.cursor.dry_run
     assert not config.cursor.enabled
-    assert config.cursor.toggle_gesture == GestureName.MIDDLE_PINCH.value
+    assert not hasattr(config.cursor, "toggle_gesture")
+    assert config.cursor_actions.mapping == {
+        "INDEX_MCP": "MOVE_CURSOR",
+        "INDEX_SQUEEZE": "GRAB",
+        "INDEX_RELEASE": "RELEASE",
+    }

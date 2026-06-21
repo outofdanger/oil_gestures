@@ -1,37 +1,32 @@
 # Gesture List
 
-## Recognized Gestures
+Recognition subsystems are independent. Static and learned dynamic results are
+not used as cursor actions.
 
-| Gesture | Source | Current purpose |
+## Static Recognition
+
+| Gesture | Source | Purpose |
 | --- | --- | --- |
-| `OPEN_PALM` | static rules | release fallback / future command |
-| `FIST` | static rules | grab fallback / future command |
-| `OK_SIGN` | static rules | select fallback |
-| `POINTING_INDEX` | dynamic rules | cursor movement when cursor feature is enabled |
-| `SQUEEZE` | dynamic rules | grab / mouse down |
-| `RELEASE` | dynamic rules | release / mouse up |
-| `MIDDLE_PINCH` | dynamic rules | toggle cursor-control feature |
-| `ROTATE_CLOCKWISE` | dynamic rules | increase pressure |
-| `ROTATE_COUNTERCLOCKWISE` | dynamic rules | decrease pressure |
+| `OPEN_PALM` | static rules | general recognition / future command |
+| `FIST` | static rules | general recognition / future command |
+| `OK_SIGN` | static rules | general recognition / future command |
 
-## Optional Cursor Control
+## Dynamic Recognition
 
-Cursor position is calculated from the configured pointer landmark. The default
-pointer source is `INDEX_MCP` / point `5`.
+`gestures/dynamic` is reserved for learned temporal models. It has no rule-based
+cursor fallback and currently produces no result until a model is connected.
 
-Cursor actions come from recognized gestures only while the cursor feature is
-enabled:
+## Cursor Recognition
+
+The isolated rule-based recognizer lives in `gestures/cursor`:
 
 | Gesture | Cursor action |
 | --- | --- |
-| `POINTING_INDEX` | `MOVE_CURSOR` |
-| `SQUEEZE` | `GRAB` |
-| `RELEASE` | `RELEASE` |
-| `ROTATE_CLOCKWISE` | `INCREASE_PRESSURE` |
-| `ROTATE_COUNTERCLOCKWISE` | `DECREASE_PRESSURE` |
-| `OK_SIGN` | `SELECT` fallback |
-| `FIST` | `GRAB` fallback |
-| `OPEN_PALM` | `RELEASE` fallback |
+| `INDEX_MCP` | `MOVE_CURSOR` |
+| `INDEX_SQUEEZE` | `GRAB` / mouse down |
+| `INDEX_RELEASE` | `RELEASE` / mouse up |
+| `MIDDLE_PINCH` | no action yet |
 
-`DRAG` is reserved in core contracts for future work and is intentionally not
-implemented in the current cursor feature.
+`INDEX_MCP` also names the default MediaPipe landmark used as the cursor point
+(landmark `5`). `MIDDLE_PINCH` does not toggle cursor control; its future behavior
+is intentionally undecided.

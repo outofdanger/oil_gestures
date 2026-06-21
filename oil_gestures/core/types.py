@@ -48,6 +48,7 @@ class LandmarkPacket:
     Consumers:
         gestures.static.static_recognizer.py
         gestures.dynamic.sequence_buffer.py
+        gestures.cursor.cursor_recognizer.py
         cursor.hand_pointer.py
         vision.drawing.py
     """
@@ -62,22 +63,21 @@ class LandmarkPacket:
 @dataclass
 class GestureResult:
     """
-    Result of static or dynamic gesture recognition.
+    Result produced by an independent gesture-recognition subsystem.
 
-    Static examples:
-        OPEN_PALM, FIST, OK_SIGN, POINTING_INDEX
-
-    Dynamic examples:
-        SQUEEZE, RELEASE, ROTATE_CLOCKWISE, ROTATE_COUNTERCLOCKWISE
+    Examples:
+        static: OPEN_PALM, FIST, OK_SIGN
+        cursor: INDEX_MCP, INDEX_SQUEEZE, INDEX_RELEASE, MIDDLE_PINCH
 
     Producers:
         gestures.static.static_recognizer.py
         gestures.dynamic.dynamic_recognizer.py
+        gestures.cursor.cursor_recognizer.py
 
     Consumers:
-        cursor.action_mapper.py
         gestures.decision.gesture_fusion.py
         commands.command_mapper.py
+        cursor.action_mapper.py
         ui.status_panel.py
     """
 
@@ -144,10 +144,9 @@ class CursorControlResult:
         - source gesture that caused the action, if any
 
     Example:
-        SQUEEZE -> CursorAction.GRAB
-        RELEASE -> CursorAction.RELEASE
-        ROTATE_CLOCKWISE -> CursorAction.INCREASE_PRESSURE
-        ROTATE_COUNTERCLOCKWISE -> CursorAction.DECREASE_PRESSURE
+        INDEX_MCP -> CursorAction.MOVE_CURSOR
+        INDEX_SQUEEZE -> CursorAction.GRAB
+        INDEX_RELEASE -> CursorAction.RELEASE
 
     Producer:
         cursor.cursor_pipeline.py / cursor.action_mapper.py
@@ -176,7 +175,6 @@ class MouseControlResult:
     Example:
         CursorAction.GRAB -> MouseAction.MOUSE_DOWN
         CursorAction.RELEASE -> MouseAction.MOUSE_UP
-        CursorAction.SELECT -> MouseAction.LEFT_CLICK
 
     Producer:
         cursor.mouse_controller.py or cursor action execution layer

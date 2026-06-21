@@ -2,7 +2,7 @@ from enum import Enum
 
 class GestureName(str, Enum):
     """
-    Shared gesture names used by static and dynamic recognition layers.
+    Shared gesture names used by independent recognition subsystems.
     Do not use raw gesture strings in implementation modules.
     """
 
@@ -14,13 +14,11 @@ class GestureName(str, Enum):
     FIST = "FIST"
     OK_SIGN = "OK_SIGN"
 
-    # Dynamic gestures
-    SQUEEZE = "SQUEEZE"
-    RELEASE = "RELEASE"
+    # Cursor gestures
+    INDEX_MCP = "INDEX_MCP"
+    INDEX_SQUEEZE = "INDEX_SQUEEZE"
+    INDEX_RELEASE = "INDEX_RELEASE"
     MIDDLE_PINCH = "MIDDLE_PINCH"
-    ROTATE_CLOCKWISE = "ROTATE_CLOCKWISE"
-    ROTATE_COUNTERCLOCKWISE = "ROTATE_COUNTERCLOCKWISE"
-    POINTING_INDEX = "POINTING_INDEX"
 
 
 class RecognitionSource(str, Enum):
@@ -29,7 +27,7 @@ class RecognitionSource(str, Enum):
     """
 
     STATIC_RULES = "STATIC_RULES"
-    DYNAMIC_RULES = "DYNAMIC_RULES"
+    CURSOR_RULES = "CURSOR_RULES"
     DYNAMIC_MODEL = "DYNAMIC_MODEL"
     MEDIAPIPE = "MEDIAPIPE"
     FALLBACK = "FALLBACK"
@@ -60,18 +58,12 @@ class MouseAction(str, Enum):
 
 class CursorAction(str, Enum):
     """
-    High-level cursor-mode actions produced from hand tracking,
-    static gestures, and dynamic gestures.
+    High-level actions produced only by the cursor gesture subsystem.
     """
     NONE = "NONE"
     MOVE_CURSOR = "MOVE_CURSOR"
-    SELECT = "SELECT"
-    RIGHT_CLICK = "RIGHT_CLICK"
     GRAB = "GRAB"
     RELEASE = "RELEASE"
-    DRAG = "DRAG"
-    INCREASE_PRESSURE = "INCREASE_PRESSURE"
-    DECREASE_PRESSURE = "DECREASE_PRESSURE"
 
 
 class InteractionMode(str, Enum):
