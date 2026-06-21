@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import oil_gestures.cursor.backends.linux_uinput as linux_uinput_module
 import oil_gestures.cursor.backends.macos as macos_backend_module
 import oil_gestures.cursor.backends.windows as windows_backend_module
 from oil_gestures.core.enums import MouseAction
@@ -308,6 +309,91 @@ def test_wayland_session_is_rejected_before_loading_xlib(monkeypatch: pytest.Mon
     assert linux_session_type() == "wayland"
     with pytest.raises(RuntimeError, match="Wayland"):
         LinuxX11MouseBackend()
+
+
+def test_wayland_session_routes_real_mouse_to_uinput_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("XDG_SESSION_TYPE", "wayland")
+    monkeypatch.delenv("DISPLAY", raising=False)
+
+    captured_bounds: list[DesktopBounds] = []
+
+    class FakeUInputBackend:
+        name = "uinput"
+
+        def __init__(self, bounds: DesktopBounds) -> None:
+            captured_bounds.append(bounds)
+
+    monkeypatch.setattr(linux_uinput_module, "LinuxUInputMouseBackend", FakeUInputBackend)
+
+    platform_backend = LinuxPlatformBackend()
+
+    assert isinstance(platform_backend.create_mouse_backend(dry_run=True), DryRunMouseBackend)
+
+    mouse = platform_backend.create_mouse_backend(dry_run=False)
+    assert isinstance(mouse, FakeUInputBackend)
+    # No DISPLAY at all (not even XWayland) means bounds fall back to the default frame size.
+    assert captured_bounds == [DesktopBounds(0.0, 0.0, 1280.0, 720.0)]
+
+
+def test_linux_uinput_backend_emits_expected_ioctls_and_events(monkeypatch: pytest.MonkeyPatch) -> None:
+    ioctl_calls: list[tuple[int, int]] = []
+    writes: list[bytes] = []
+    closed: list[int] = []
+
+    def fake_open(path: str, _flags: int) -> int:
+        assert path == linux_uinput_module._UINPUT_PATH
+        return 7
+
+    def fake_ioctl(fd: int, request: int, arg: int = 0) -> int:
+        assert fd == 7
+        ioctl_calls.append((request, arg))
+        return 0
+
+    def fake_write(fd: int, data: bytes) -> int:
+        assert fd == 7
+        writes.append(data)
+        return len(data)
+
+    def fake_close(fd: int) -> None:
+        closed.append(fd)
+
+    monkeypatch.setattr(linux_uinput_module.os, "open", fake_open)
+    monkeypatch.setattr(linux_uinput_module.fcntl, "ioctl", fake_ioctl)
+    monkeypatch.setattr(linux_uinput_module.os, "write", fake_write)
+    monkeypatch.setattr(linux_uinput_module.os, "close", fake_close)
+    monkeypatch.setattr(linux_uinput_module.time, "sleep", lambda _seconds: None)
+
+    backend = linux_uinput_module.LinuxUInputMouseBackend(DesktopBounds(0.0, 0.0, 1920.0, 1080.0))
+
+    assert (linux_uinput_module._UI_SET_EVBIT, linux_uinput_module._EV_KEY) in ioctl_calls
+    assert (linux_uinput_module._UI_SET_ABSBIT, linux_uinput_module._ABS_Y) in ioctl_calls
+    assert (linux_uinput_module._UI_DEV_CREATE, 0) in ioctl_calls
+    assert len(writes) == 1 and len(writes[0]) == 1116
+    assert backend.get_position() == (960.0, 540.0)
+
+    event = linux_uinput_module._EVENT_STRUCT
+
+    writes.clear()
+    assert backend.move_to(100, 200) is True
+    assert writes == [
+        event.pack(0, 0, linux_uinput_module._EV_ABS, linux_uinput_module._ABS_X, 100),
+        event.pack(0, 0, linux_uinput_module._EV_ABS, linux_uinput_module._ABS_Y, 200),
+        event.pack(0, 0, linux_uinput_module._EV_SYN, linux_uinput_module._SYN_REPORT, 0),
+    ]
+    assert backend.get_position() == (100.0, 200.0)
+
+    writes.clear()
+    assert backend.click("right") is True
+    assert writes == [
+        event.pack(0, 0, linux_uinput_module._EV_KEY, linux_uinput_module._BTN_RIGHT, 1),
+        event.pack(0, 0, linux_uinput_module._EV_SYN, linux_uinput_module._SYN_REPORT, 0),
+        event.pack(0, 0, linux_uinput_module._EV_KEY, linux_uinput_module._BTN_RIGHT, 0),
+        event.pack(0, 0, linux_uinput_module._EV_SYN, linux_uinput_module._SYN_REPORT, 0),
+    ]
+
+    backend.close()
+    assert (linux_uinput_module._UI_DEV_DESTROY, 0) in ioctl_calls
+    assert closed == [7]
 
 
 def test_linux_x11_backend_and_desktop_bounds_use_xlib(monkeypatch: pytest.MonkeyPatch) -> None:

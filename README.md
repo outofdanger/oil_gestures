@@ -21,7 +21,8 @@ learned dynamic gesture results as mouse actions.
 - Optional cursor-control feature, initially disabled and manually testable with `--cursor-on`.
 - Safe cursor dry-run by default: real OS mouse movement is disabled unless
   explicitly requested.
-- Real cursor control on macOS, Windows, and Linux/X11.
+- Real cursor control on macOS, Windows, Linux/X11 (XTEST), and Linux/Wayland
+  (via a `/dev/uinput` virtual pointer).
 - `scripts/check_camera.py` checks camera + MediaPipe landmarks only.
 - `scripts/run_demo.py` runs the gesture-recognition demo and optional cursor feature.
 
@@ -61,9 +62,16 @@ it with `.venv\Scripts\activate`.
 macOS needs Camera permission for the app that runs Python. Accessibility
 permission is needed only when real mouse control is intentionally enabled.
 
-On Linux, camera capture prefers V4L2 and real cursor control uses X11/XTest.
-Native Wayland sessions continue to support recognition and cursor dry-run, but
-global mouse injection requires logging in with an X11/Xorg session.
+On Linux, camera capture prefers V4L2. Real cursor control uses the X11 XTEST
+extension on X11/Xorg sessions, and a `/dev/uinput` virtual pointer device on
+native Wayland sessions (XTEST only affects XWayland clients, not the
+compositor, so it cannot move the real cursor under Wayland). The uinput path
+needs read/write access to `/dev/uinput`: either run as a member of the
+`input` group (`sudo usermod -aG input $USER`, then log out and back in) or
+add a udev rule such as `KERNEL=="uinput", GROUP="input", MODE="0660"` in
+`/etc/udev/rules.d/`, plus the kernel module loaded (`sudo modprobe uinput`).
+Without that access, `--real-mouse` raises a clear error instead of silently
+falling back to dry-run.
 
 The prebuilt dependency set supports macOS on Apple Silicon, Windows x86-64,
 and Linux x86-64 with glibc 2.28 or newer. MediaPipe/OpenCV do not currently

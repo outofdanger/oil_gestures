@@ -75,20 +75,53 @@ ls -l /dev/video*
 groups
 ```
 
-Real cursor control uses the X11 XTest extension through `python-xlib`, which is
-installed from `requirements.txt`. Run a backend-only check before opening the
-camera:
+Real cursor control uses one of two backends depending on the session type:
+
+- **X11/Xorg**: the X11 XTest extension through `python-xlib` (installed from
+  `requirements.txt`).
+- **Native Wayland**: a virtual absolute pointer created through
+  `/dev/uinput`. XTest only affects XWayland clients, not the compositor, so
+  it cannot move the real cursor under Wayland — uinput events go through the
+  kernel evdev/libinput stack instead, the same path a physical touchscreen
+  uses, which the compositor does see.
+
+Run a backend-only check before opening the camera:
 
 ```bash
 python app/main.py --mouse-diagnostics --real-mouse
 python app/main.py --test-mouse-move --real-mouse
 ```
 
-The first command should report `backend: x11-xtest`, `display_server: x11`,
-the current pointer position, and desktop bounds.
+The first command reports `backend: x11-xtest` and `display_server: x11` on
+an X11/Xorg session, or `backend: uinput` and `display_server: wayland` on a
+native Wayland session, plus the current pointer position and desktop bounds.
 
-Native Wayland deliberately restricts global synthetic input. Gesture
-recognition and dry-run work normally there, but `--real-mouse` exits with a
-clear explanation. Select an X11/Xorg desktop session at login when real cursor
-control is required. A missing `DISPLAY` usually means the app was launched
-outside the graphical session (for example, over a plain SSH connection).
+### Wayland: uinput permissions
+
+The uinput backend needs read/write access to `/dev/uinput`:
+
+```bash
+sudo modprobe uinput
+ls -l /dev/uinput
+```
+
+Grant access either by joining the `input` group:
+
+```bash
+sudo usermod -aG input $USER
+# log out and back in for the new group membership to take effect
+```
+
+or with a persistent udev rule:
+
+```bash
+echo 'KERNEL=="uinput", GROUP="input", MODE="0660"' | sudo tee /etc/udev/rules.d/99-uinput.rules
+sudo udevadm control --reload-rules && sudo udevadm trigger
+```
+
+Without one of these, `--real-mouse` fails fast with a specific error
+explaining which permission is missing, instead of silently falling back to
+dry-run. A missing `DISPLAY` (on X11/XWayland) usually means the app was
+launched outside the graphical session (for example, over a plain SSH
+connection); this does not affect the uinput path, which does not need
+`DISPLAY` at all.

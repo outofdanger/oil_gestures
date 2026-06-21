@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 
+from oil_gestures.core.constants import DEFAULT_FRAME_HEIGHT, DEFAULT_FRAME_WIDTH
 from oil_gestures.cursor.backends.base import DesktopBounds, MouseBackend, MouseButton, MousePoint
 from oil_gestures.cursor.backends.dry_run import DryRunMouseBackend
 
@@ -24,10 +25,11 @@ def linux_session_type() -> str:
 class _LinuxX11Connection:
     def __init__(self, require_xtest: bool) -> None:
         session_type = linux_session_type()
-        if session_type == "wayland":
+        if require_xtest and session_type == "wayland":
             raise RuntimeError(
-                "Real cursor control is not available in a native Wayland session. "
-                "Log in with an X11/Xorg session or keep cursor.dry_run enabled."
+                "XTEST-based cursor control is not available in a native Wayland session. "
+                "Use the uinput backend (default for real-mouse on Wayland), log in with an "
+                "X11/Xorg session, or keep cursor.dry_run enabled."
             )
         if not os.environ.get("DISPLAY"):
             raise RuntimeError(
@@ -152,7 +154,19 @@ class LinuxPlatformBackend:
     name = "linux"
 
     def create_mouse_backend(self, dry_run: bool) -> MouseBackend:
-        return DryRunMouseBackend() if dry_run else LinuxX11MouseBackend()
+        if dry_run:
+            return DryRunMouseBackend()
+        if linux_session_type() == "wayland":
+            from oil_gestures.cursor.backends.linux_uinput import LinuxUInputMouseBackend
+
+            return LinuxUInputMouseBackend(self._bounds_for_real_mouse())
+        return LinuxX11MouseBackend()
+
+    def _bounds_for_real_mouse(self) -> DesktopBounds:
+        try:
+            return self.get_desktop_bounds()
+        except RuntimeError:
+            return DesktopBounds(0.0, 0.0, float(DEFAULT_FRAME_WIDTH), float(DEFAULT_FRAME_HEIGHT))
 
     def get_desktop_bounds(self) -> DesktopBounds:
         connection = _LinuxX11Connection(require_xtest=False)
