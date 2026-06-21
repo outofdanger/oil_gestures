@@ -44,9 +44,19 @@ tests/                 Unit tests for pure logic
 
 ## Setup
 
+The supported runtime is standard **CPython 3.14.x**; the repository pins
+CPython 3.14.6 in `.python-version`. The free-threaded `3.14t` build is not part
+of the supported runtime yet.
+
 ```bash
-python3 -m pip install -r requirements.txt
+python3.14 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 ```
+
+On Windows, create the environment with `py -3.14 -m venv .venv` and activate
+it with `.venv\Scripts\activate`.
 
 macOS needs Camera permission for the app that runs Python. Accessibility
 permission is needed only when real mouse control is intentionally enabled.
@@ -55,38 +65,43 @@ On Linux, camera capture prefers V4L2 and real cursor control uses X11/XTest.
 Native Wayland sessions continue to support recognition and cursor dry-run, but
 global mouse injection requires logging in with an X11/Xorg session.
 
+The prebuilt dependency set supports macOS on Apple Silicon, Windows x86-64,
+and Linux x86-64 with glibc 2.28 or newer. MediaPipe/OpenCV do not currently
+provide the complete wheel set for macOS Intel, Linux ARM64, or Windows ARM64.
+
 ## Run
 
 Gesture recognition with the secondary cursor subsystem initially off:
 
 ```bash
-python3 scripts/run_demo.py
+python scripts/run_demo.py
 ```
 
 Automatic activation by a learned dynamic gesture is intentionally left for a
-later integration. `MIDDLE_PINCH` is recognized by the cursor subsystem but does
-not toggle it.
+later integration. `MIDDLE_PINCH` performs a right click and does not toggle
+cursor control. Holding `INDEX_SQUEEZE`, moving the hand, and then producing
+`INDEX_RELEASE` performs drag-and-drop.
 
 Start with cursor feature on, still in safe dry-run mode:
 
 ```bash
-python3 scripts/run_demo.py --cursor-on
+python scripts/run_demo.py --cursor-on
 ```
 
 Enable real mouse control intentionally:
 
 ```bash
-python3 scripts/run_demo.py --cursor-on --real-mouse
+python scripts/run_demo.py --cursor-on --real-mouse
 ```
 
 Run mouse diagnostics:
 
 ```bash
-python3 app/main.py --mouse-diagnostics
+python app/main.py --mouse-diagnostics
 ```
 
 On Linux, verify the real X11 backend before starting the camera:
 
 ```bash
-python3 app/main.py --mouse-diagnostics --real-mouse
+python app/main.py --mouse-diagnostics --real-mouse
 ```

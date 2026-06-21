@@ -43,6 +43,9 @@ class WindowsMouseBackend:
     def move_to(self, x: int, y: int) -> bool:
         return bool(self._user32.SetCursorPos(int(x), int(y)))
 
+    def drag_to(self, x: int, y: int) -> bool:
+        return self.move_to(x, y)
+
     def click(self, button: MouseButton, position: MousePoint | None = None) -> bool:
         down, up = self._button_flags(button)
         self._user32.mouse_event(down, 0, 0, 0, 0)

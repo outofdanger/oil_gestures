@@ -47,7 +47,7 @@ class MediaPipeHandLandmarker:
             import mediapipe as mp
         except Exception as exc:
             raise RuntimeError(
-                "MediaPipe is required. Install it with: python3 -m pip install --upgrade mediapipe"
+                "MediaPipe is required. Install it with: python -m pip install --upgrade mediapipe"
             ) from exc
         return mp
 

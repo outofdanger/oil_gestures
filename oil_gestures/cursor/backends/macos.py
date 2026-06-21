@@ -50,6 +50,25 @@ class MacOSMouseBackend:
             logger.error("Could not warp mouse cursor to (%s, %s): %s", x, y, exc)
             return moved
 
+    def drag_to(self, x: int, y: int) -> bool:
+        if not self._events_allowed():
+            self.move_to(x, y)
+            return False
+
+        point = self._quartz.CGPoint(float(x), float(y))
+        try:
+            event = self._quartz.CGEventCreateMouseEvent(
+                None,
+                self._quartz.kCGEventLeftMouseDragged,
+                point,
+                self._quartz.kCGMouseButtonLeft,
+            )
+            self._quartz.CGEventPost(self._quartz.kCGHIDEventTap, event)
+            return True
+        except Exception as exc:
+            logger.error("Could not drag mouse cursor to (%s, %s): %s", x, y, exc)
+            return False
+
     def click(self, button: MouseButton, position: MousePoint | None = None) -> bool:
         if not self._events_allowed():
             return False
@@ -137,7 +156,7 @@ class MacOSPlatformBackend:
         if self._quartz is None:
             raise RuntimeError(
                 "Real cursor control on macOS requires pyobjc-framework-Quartz. "
-                "Install project dependencies with: python3 -m pip install -r requirements.txt"
+                "Install project dependencies with: python -m pip install -r requirements.txt"
             )
         return MacOSMouseBackend(self._quartz, self)
 

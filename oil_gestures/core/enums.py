@@ -62,6 +62,7 @@ class CursorAction(str, Enum):
     """
     NONE = "NONE"
     MOVE_CURSOR = "MOVE_CURSOR"
+    RIGHT_CLICK = "RIGHT_CLICK"
     GRAB = "GRAB"
     RELEASE = "RELEASE"
 

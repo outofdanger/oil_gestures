@@ -95,6 +95,13 @@ class CursorPipeline:
             self.smoother.reset(None)
 
     def _execute_discrete_action(self, action: CursorAction, position: ScreenPosition, timestamp: float) -> bool:
+        if action == CursorAction.RIGHT_CLICK:
+            if self.state.pressed or not self._action_ready(action, timestamp):
+                return False
+            self.mouse.execute(action, position)
+            self._mark_action(action, timestamp)
+            return True
+
         if action == CursorAction.GRAB:
             if self.state.pressed or not self._action_ready(action, timestamp):
                 return False
@@ -180,9 +187,15 @@ class CursorPipeline:
                 packet.timestamp,
             )
         elif result.action == CursorAction.MOVE_CURSOR:
-            self.mouse.move_to(smoothed_position)
+            if self.state.pressed:
+                self.mouse.drag_to(smoothed_position)
+            else:
+                self.mouse.move_to(smoothed_position)
         else:
-            self.mouse.move_to(smoothed_position)
+            if result.action == CursorAction.RELEASE and self.state.pressed:
+                self.mouse.drag_to(smoothed_position)
+            else:
+                self.mouse.move_to(smoothed_position)
             self._execute_discrete_action(result.action, smoothed_position, packet.timestamp)
 
         self._set_action_status(result)

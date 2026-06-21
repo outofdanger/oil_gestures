@@ -16,6 +16,10 @@ class DryRunMouseBackend:
         self._position = (float(x), float(y))
         return False
 
+    def drag_to(self, x: int, y: int) -> bool:
+        self._position = (float(x), float(y))
+        return False
+
     def click(self, button: MouseButton, position: MousePoint | None = None) -> bool:
         return False
 

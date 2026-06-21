@@ -33,7 +33,11 @@ Cursor action mappings:
 - `INDEX_MCP` -> `MOVE_CURSOR`
 - `INDEX_SQUEEZE` -> `GRAB`
 - `INDEX_RELEASE` -> `RELEASE`
-- `MIDDLE_PINCH` -> no action yet
+- `MIDDLE_PINCH` -> `RIGHT_CLICK`
+
+`DRAG` is a derived low-level mouse action rather than another gesture mapping:
+movement between `INDEX_SQUEEZE` and `INDEX_RELEASE` emits drag events while the
+left mouse button is held.
 
 Static and learned dynamic gesture results never enter `CursorActionMapper`.
 Future activation of cursor control by a learned dynamic gesture belongs to the

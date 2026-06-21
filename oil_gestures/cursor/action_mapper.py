@@ -11,6 +11,7 @@ DEFAULT_CURSOR_MAPPING: dict[GestureName, CursorAction] = {
     GestureName.INDEX_MCP: CursorAction.MOVE_CURSOR,
     GestureName.INDEX_SQUEEZE: CursorAction.GRAB,
     GestureName.INDEX_RELEASE: CursorAction.RELEASE,
+    GestureName.MIDDLE_PINCH: CursorAction.RIGHT_CLICK,
 }
 
 

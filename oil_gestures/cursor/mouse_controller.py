@@ -57,6 +57,12 @@ class MouseController:
             logger.info("%s to (%s, %s)", MouseAction.MOVE.value, position.x, position.y)
         return MouseControlResult(MouseAction.MOVE, position, executed, position.timestamp)
 
+    def drag_to(self, position: ScreenPosition) -> MouseControlResult:
+        executed = self._mouse_backend.drag_to(position.x, position.y)
+        if self.config.dry_run:
+            logger.info("%s to (%s, %s)", MouseAction.DRAG.value, position.x, position.y)
+        return MouseControlResult(MouseAction.DRAG, position, executed, position.timestamp)
+
     def click(self, button: MouseButton, position: ScreenPosition | None = None) -> MouseControlResult:
         timestamp = position.timestamp if position is not None else time.perf_counter()
         action = MouseAction.LEFT_CLICK if button == "left" else MouseAction.RIGHT_CLICK
@@ -82,6 +88,8 @@ class MouseController:
     def execute(self, action: CursorAction, position: ScreenPosition | None = None) -> MouseControlResult:
         if action == CursorAction.MOVE_CURSOR and position is not None:
             return self.move_to(position)
+        if action == CursorAction.RIGHT_CLICK:
+            return self.click("right", position)
         if action == CursorAction.GRAB:
             return self.mouse_down(position)
         if action == CursorAction.RELEASE:

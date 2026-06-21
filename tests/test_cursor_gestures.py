@@ -40,6 +40,7 @@ class PassthroughSmoother:
 class RecordingMouse:
     def __init__(self) -> None:
         self.moves = []
+        self.drags = []
         self.executed = []
 
     def get_position(self):
@@ -47,6 +48,9 @@ class RecordingMouse:
 
     def move_to(self, position):
         self.moves.append(position)
+
+    def drag_to(self, position):
+        self.drags.append(position)
 
     def execute(self, action, position=None):
         self.executed.append(action)
@@ -121,6 +125,7 @@ def test_action_mapper_maps_only_cursor_gestures() -> None:
     position = ScreenPosition(100, 200, 123.0)
 
     squeeze = mapper.map(_cursor_gesture(GestureName.INDEX_SQUEEZE, 123.0), position)
+    middle_pinch = mapper.map(_cursor_gesture(GestureName.MIDDLE_PINCH, 123.0), position)
     static = mapper.map(
         GestureResult(GestureName.OK_SIGN, 0.99, RecognitionSource.STATIC_RULES, 123.0),
         position,
@@ -132,16 +137,18 @@ def test_action_mapper_maps_only_cursor_gestures() -> None:
 
     assert squeeze.action == CursorAction.GRAB
     assert squeeze.source_gesture == GestureName.INDEX_SQUEEZE
+    assert middle_pinch.action == CursorAction.RIGHT_CLICK
+    assert middle_pinch.source_gesture == GestureName.MIDDLE_PINCH
     assert static.action == CursorAction.NONE
     assert static.source_gesture == GestureName.UNKNOWN
     assert dynamic.action == CursorAction.NONE
 
 
-def test_middle_pinch_is_recognized_but_has_no_cursor_action() -> None:
+def test_middle_pinch_maps_to_right_click() -> None:
     result = CursorActionMapper().map(_cursor_gesture(GestureName.MIDDLE_PINCH, 123.0))
 
-    assert result.action == CursorAction.NONE
-    assert result.source_gesture == GestureName.UNKNOWN
+    assert result.action == CursorAction.RIGHT_CLICK
+    assert result.source_gesture == GestureName.MIDDLE_PINCH
 
 
 def test_old_cursor_gesture_names_are_not_accepted() -> None:
@@ -252,6 +259,32 @@ def test_cursor_pipeline_releases_mouse_when_hand_is_lost() -> None:
     assert not pipeline.state.pressed
 
 
+def test_cursor_pipeline_drags_while_index_is_squeezed() -> None:
+    mouse = RecordingMouse()
+    pipeline = _cursor_pipeline(mouse)
+
+    pipeline.process(_packet(1.0, _open_hand()), _cursor_gesture(GestureName.INDEX_SQUEEZE, 1.0))
+    pipeline.process(_packet(1.1, _open_hand()), _cursor_gesture(GestureName.INDEX_MCP, 1.1))
+    pipeline.process(_packet(1.2, _open_hand()), _cursor_gesture(GestureName.INDEX_RELEASE, 1.2))
+
+    assert mouse.executed == [CursorAction.GRAB, CursorAction.RELEASE]
+    assert len(mouse.drags) == 2
+    assert not pipeline.state.pressed
+
+
+def test_cursor_pipeline_executes_middle_pinch_as_right_click() -> None:
+    mouse = RecordingMouse()
+    pipeline = _cursor_pipeline(mouse)
+
+    result = pipeline.process(
+        _packet(1.0, _open_hand()),
+        _cursor_gesture(GestureName.MIDDLE_PINCH, 1.0),
+    )
+
+    assert result.action == CursorAction.RIGHT_CLICK
+    assert mouse.executed == [CursorAction.RIGHT_CLICK]
+
+
 def test_cursor_pipeline_disabled_does_not_execute_cursor_actions() -> None:
     mouse = RecordingMouse()
     pipeline = _cursor_pipeline(mouse)
@@ -269,9 +302,17 @@ def test_mouse_controller_reports_move_while_left_button_is_down() -> None:
 
     assert mouse.move_to(position).action == MouseAction.MOVE
     mouse.mouse_down(position)
-    assert mouse.move_to(ScreenPosition(30, 40, 1.1)).action == MouseAction.MOVE
+    assert mouse.drag_to(ScreenPosition(30, 40, 1.1)).action == MouseAction.DRAG
     mouse.mouse_up(ScreenPosition(30, 40, 1.2))
     assert mouse.move_to(ScreenPosition(50, 60, 1.3)).action == MouseAction.MOVE
+
+
+def test_mouse_controller_executes_right_click_action() -> None:
+    mouse = MouseController(MouseControllerConfig(dry_run=True))
+
+    result = mouse.execute(CursorAction.RIGHT_CLICK, ScreenPosition(10, 20, 1.0))
+
+    assert result.action == MouseAction.RIGHT_CLICK
 
 
 def test_loaded_config_keeps_cursor_secondary_and_isolated() -> None:
@@ -284,4 +325,5 @@ def test_loaded_config_keeps_cursor_secondary_and_isolated() -> None:
         "INDEX_MCP": "MOVE_CURSOR",
         "INDEX_SQUEEZE": "GRAB",
         "INDEX_RELEASE": "RELEASE",
+        "MIDDLE_PINCH": "RIGHT_CLICK",
     }

@@ -147,6 +147,7 @@ class CursorControlResult:
         INDEX_MCP -> CursorAction.MOVE_CURSOR
         INDEX_SQUEEZE -> CursorAction.GRAB
         INDEX_RELEASE -> CursorAction.RELEASE
+        MIDDLE_PINCH -> CursorAction.RIGHT_CLICK
 
     Producer:
         cursor.cursor_pipeline.py / cursor.action_mapper.py
@@ -175,6 +176,7 @@ class MouseControlResult:
     Example:
         CursorAction.GRAB -> MouseAction.MOUSE_DOWN
         CursorAction.RELEASE -> MouseAction.MOUSE_UP
+        MOVE_CURSOR while grabbed -> MouseAction.DRAG
 
     Producer:
         cursor.mouse_controller.py or cursor action execution layer

@@ -126,7 +126,7 @@ def _load_yaml(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
     if yaml is None:
-        raise RuntimeError("PyYAML is required to load configs. Install it with: python3 -m pip install PyYAML")
+        raise RuntimeError("PyYAML is required to load configs. Install it with: python -m pip install PyYAML")
     with path.open("r", encoding="utf-8") as file:
         loaded = yaml.safe_load(file) or {}
     if not isinstance(loaded, dict):

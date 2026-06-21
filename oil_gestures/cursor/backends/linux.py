@@ -41,7 +41,7 @@ class _LinuxX11Connection:
         except ImportError as exc:
             raise RuntimeError(
                 "Linux X11 integration requires python-xlib. "
-                "Install project dependencies with: python3 -m pip install -r requirements.txt"
+                "Install project dependencies with: python -m pip install -r requirements.txt"
             ) from exc
 
         try:
@@ -103,6 +103,9 @@ class LinuxX11MouseBackend:
         )
         self._connection.display.sync()
         return True
+
+    def drag_to(self, x: int, y: int) -> bool:
+        return self.move_to(x, y)
 
     def click(self, button: MouseButton, position: MousePoint | None = None) -> bool:
         button_number = self._button_number(button)

@@ -25,8 +25,8 @@ The isolated rule-based recognizer lives in `gestures/cursor`:
 | `INDEX_MCP` | `MOVE_CURSOR` |
 | `INDEX_SQUEEZE` | `GRAB` / mouse down |
 | `INDEX_RELEASE` | `RELEASE` / mouse up |
-| `MIDDLE_PINCH` | no action yet |
+| `MIDDLE_PINCH` | `RIGHT_CLICK` |
 
 `INDEX_MCP` also names the default MediaPipe landmark used as the cursor point
-(landmark `5`). `MIDDLE_PINCH` does not toggle cursor control; its future behavior
-is intentionally undecided.
+(landmark `5`). Moving while `INDEX_SQUEEZE` is held emits drag events until
+`INDEX_RELEASE`. `MIDDLE_PINCH` does not toggle cursor control.

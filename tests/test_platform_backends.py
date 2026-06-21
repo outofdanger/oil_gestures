@@ -40,6 +40,10 @@ class FakeMouseBackend:
         self.calls.append(("move", x, y))
         return True
 
+    def drag_to(self, x: int, y: int) -> bool:
+        self.calls.append(("drag", x, y))
+        return True
+
     def click(self, button: str, position=None) -> bool:
         self.calls.append(("click", button, position))
         return True
@@ -96,6 +100,7 @@ def test_mouse_controller_delegates_to_platform_backend(monkeypatch: pytest.Monk
     assert controller.backend_name == "fake-mouse"
     assert controller.get_position() == (321.0, 654.0)
     assert controller.move_to(position).action == MouseAction.MOVE
+    assert controller.drag_to(position).action == MouseAction.DRAG
     assert controller.click("right", position).executed
     assert controller.mouse_down(position).executed
     assert controller.mouse_up(position).executed
@@ -103,6 +108,7 @@ def test_mouse_controller_delegates_to_platform_backend(monkeypatch: pytest.Monk
 
     assert platform_backend.mouse.calls == [
         ("move", 100, 200),
+        ("drag", 100, 200),
         ("click", "right", (100.0, 200.0)),
         ("down", "left", (100.0, 200.0)),
         ("up", "left", (100.0, 200.0)),
@@ -135,11 +141,14 @@ def test_dry_run_backend_keeps_an_in_memory_position() -> None:
 
     assert not backend.move_to(10, 20)
     assert backend.get_position() == (10.0, 20.0)
+    assert not backend.drag_to(30, 40)
+    assert backend.get_position() == (30.0, 40.0)
     assert not backend.click("left")
 
 
 def test_windows_backend_owns_win32_cursor_and_desktop_calls(monkeypatch: pytest.MonkeyPatch) -> None:
     mouse_events: list[int] = []
+    cursor_positions: list[tuple[int, int]] = []
 
     class FakePoint:
         x = 12
@@ -159,7 +168,8 @@ def test_windows_backend_owns_win32_cursor_and_desktop_calls(monkeypatch: pytest
             return 1
 
         @staticmethod
-        def SetCursorPos(_x: int, _y: int) -> int:
+        def SetCursorPos(x: int, y: int) -> int:
+            cursor_positions.append((x, y))
             return 1
 
         @staticmethod
@@ -180,10 +190,12 @@ def test_windows_backend_owns_win32_cursor_and_desktop_calls(monkeypatch: pytest
     mouse = platform_backend.create_mouse_backend(dry_run=False)
     assert mouse.get_position() == (12.0, 34.0)
     assert mouse.move_to(100, 200)
+    assert mouse.drag_to(150, 250)
     assert mouse.click("right")
     assert mouse.button_down("left")
     assert mouse.button_up("left")
     assert mouse_events == [0x0008, 0x0010, 0x0002, 0x0004]
+    assert cursor_positions == [(100, 200), (150, 250)]
 
 
 def test_macos_backend_owns_quartz_cursor_and_desktop_calls(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -192,6 +204,7 @@ def test_macos_backend_owns_quartz_cursor_and_desktop_calls(monkeypatch: pytest.
         kCGEventLeftMouseUp = 2
         kCGEventRightMouseDown = 3
         kCGEventRightMouseUp = 4
+        kCGEventLeftMouseDragged = 8
         kCGMouseButtonLeft = 5
         kCGMouseButtonRight = 6
         kCGHIDEventTap = 7
@@ -268,12 +281,14 @@ def test_macos_backend_owns_quartz_cursor_and_desktop_calls(monkeypatch: pytest.
     mouse = platform_backend.create_mouse_backend(dry_run=False)
     assert mouse.get_position() == (12.0, 34.0)
     assert mouse.move_to(100, 200)
+    assert mouse.drag_to(150, 250)
     assert mouse.click("right", (100.0, 200.0))
     assert mouse.button_down("left", (100.0, 200.0))
     assert mouse.button_up("left", (100.0, 200.0))
     mouse.close()
 
-    assert len(quartz.posted) == 4
+    assert len(quartz.posted) == 5
+    assert quartz.posted[0][1][0] == quartz.kCGEventLeftMouseDragged
     assert quartz.reassociated
 
 
@@ -345,12 +360,14 @@ def test_linux_x11_backend_and_desktop_bounds_use_xlib(monkeypatch: pytest.Monke
     mouse = platform_backend.create_mouse_backend(dry_run=False)
     assert mouse.get_position() == (11.0, 22.0)
     assert mouse.move_to(100, 200)
+    assert mouse.drag_to(150, 250)
     assert mouse.click("right")
     assert mouse.button_down("left")
     assert mouse.button_up("left")
     mouse.close()
 
     assert ("event", 6, {"x": 100, "y": 200}) in events
+    assert ("event", 6, {"x": 150, "y": 250}) in events
     assert ("event", 4, 3, {}) in events
     assert ("event", 5, 3, {}) in events
     assert ("event", 4, 1, {}) in events
