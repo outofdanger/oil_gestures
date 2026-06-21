@@ -37,6 +37,10 @@ from oil_gestures.gestures.cursor.cursor_recognizer import CursorGestureRecogniz
 from oil_gestures.gestures.decision.gesture_toggle import GestureToggle
 from oil_gestures.gestures.dynamic.dynamic_recognizer import DynamicGestureRecognizer
 from oil_gestures.gestures.static.static_recognizer import StaticGestureRecognizer
+from oil_gestures.integration.publisher import (
+    MLIntegrationPublisher,
+    MLIntegrationPublisherConfig,
+)
 
 
 logger = get_logger(__name__)
@@ -122,7 +126,10 @@ def build_cursor_pipeline(config: OilGesturesConfig) -> CursorPipeline:
     )
 
 
-def run(config: OilGesturesConfig) -> int:
+def run(
+    config: OilGesturesConfig,
+    integration_publisher: MLIntegrationPublisher | None = None,
+) -> int:
     import cv2
 
     from oil_gestures.vision.camera import CameraConfig as StreamCameraConfig
@@ -156,6 +163,7 @@ def run(config: OilGesturesConfig) -> int:
         height=config.camera.height,
         fps=config.camera.fps,
         preferred_fourcc=config.camera.preferred_fourcc,
+        threaded=config.camera.threaded,
     )
     preview_width = config.runtime.preview_width or None
     frame_processor_config = FrameProcessorConfig(
@@ -189,6 +197,16 @@ def run(config: OilGesturesConfig) -> int:
 
     with ExitStack() as stack:
         stack.callback(pipeline.mouse.close)
+        event_publisher = None
+        if integration_publisher is not None:
+            event_publisher = stack.enter_context(integration_publisher)
+            host, port = event_publisher.address
+            logger.info(
+                "ML contract stream listening on %s:%d (camera=%s).",
+                host,
+                port,
+                "ON" if event_publisher.config.publish_camera else "OFF",
+            )
         camera = stack.enter_context(CameraStream(camera_config))
         landmarker = stack.enter_context(
             MediaPipeGestureRecognizer(
@@ -247,8 +265,39 @@ def run(config: OilGesturesConfig) -> int:
                         inference_packet.height,
                     )
 
-                if config.runtime.show_camera_feed:
+                runtime_event = None
+                if event_publisher is not None:
+                    runtime_event = event_publisher.publish_runtime(
+                        frame_packet=frame_packet,
+                        landmark_packet=landmark_packet,
+                        static_gesture=static_gesture,
+                        dynamic_gesture=dynamic_gesture,
+                        cursor_gesture=cursor_gesture,
+                        pointer=pipeline.state.pointer,
+                        cursor_result=result,
+                        cursor_enabled=pipeline.enabled,
+                        cursor_pressed=pipeline.state.pressed or cursor_recognizer.index_pressed,
+                        paused=paused,
+                        fps=fps,
+                        inference_ms=performance_meter.inference_ms,
+                        mirrored=config.camera.mirror,
+                    )
+
+                display_packet = None
+                needs_camera_frame = (
+                    event_publisher is not None and event_publisher.wants_camera_frame
+                )
+                if config.runtime.show_camera_feed or needs_camera_frame:
                     display_packet = process_frame(frame_packet, frame_processor_config)
+
+                if needs_camera_frame and event_publisher is not None and runtime_event is not None:
+                    event_publisher.publish_camera_frame(
+                        display_packet.frame,
+                        runtime_event,
+                        mirrored=config.camera.mirror,
+                    )
+
+                if config.runtime.show_camera_feed and display_packet is not None:
                     if config.runtime.show_landmarks and landmark_packet.hand_detected:
                         draw_landmarks(
                             display_packet.frame,
@@ -299,7 +348,7 @@ def run(config: OilGesturesConfig) -> int:
                     cv2.imshow(config.runtime.window_name, display_packet.frame)
                     key = cv2.waitKey(1) & 0xFF
                 else:
-                    key = cv2.waitKey(1) & 0xFF
+                    key = -1
 
                 if key in (OPENCV_ESCAPE_KEY_CODE, safe_exit):
                     break
@@ -327,6 +376,35 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--request-permission", action="store_true", help="Ask macOS for Accessibility permission.")
     parser.add_argument("--mouse-diagnostics", action="store_true", help="Print mouse backend status and exit.")
     parser.add_argument("--test-mouse-move", action="store_true", help="Try direct mouse movement and exit.")
+    parser.add_argument(
+        "--event-server",
+        action="store_true",
+        help="Publish versioned ML contracts over a local NDJSON/TCP stream.",
+    )
+    parser.add_argument("--event-host", default="127.0.0.1", help="ML contract server host.")
+    parser.add_argument("--event-port", type=int, default=8765, help="ML contract server port.")
+    parser.add_argument(
+        "--publish-camera",
+        action="store_true",
+        help="Also publish throttled JPEG camera-frame contracts.",
+    )
+    parser.add_argument(
+        "--camera-publish-fps",
+        type=float,
+        default=10.0,
+        help="Maximum camera contract frame rate.",
+    )
+    parser.add_argument(
+        "--camera-jpeg-quality",
+        type=int,
+        default=80,
+        help="JPEG quality for camera contracts (1-100).",
+    )
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="Run without the local OpenCV window; consumers can use the contracts.",
+    )
     return parser
 
 
@@ -381,6 +459,8 @@ def main() -> int:
         raise SystemExit("--real-mouse and --dry-run cannot be used together.")
     if args.cursor_on and args.cursor_off:
         raise SystemExit("--cursor-on and --cursor-off cannot be used together.")
+    if args.publish_camera and not args.event_server:
+        raise SystemExit("--publish-camera requires --event-server.")
 
     config = load_config(args.config_dir)
     cursor_overrides = {}
@@ -392,10 +472,13 @@ def main() -> int:
         cursor_overrides["enabled"] = True
     if args.cursor_off:
         cursor_overrides["enabled"] = False
-    if cursor_overrides:
+    runtime_overrides = {}
+    if args.headless:
+        runtime_overrides["show_camera_feed"] = False
+    if cursor_overrides or runtime_overrides:
         config = OilGesturesConfig(
             camera=config.camera,
-            runtime=config.runtime,
+            runtime=replace(config.runtime, **runtime_overrides),
             mediapipe=config.mediapipe,
             static=config.static,
             dynamic=config.dynamic,
@@ -417,7 +500,21 @@ def main() -> int:
     if args.test_mouse_move:
         return test_mouse_move(config)
 
-    return run(config)
+    integration_publisher = None
+    if args.event_server:
+        try:
+            publisher_config = MLIntegrationPublisherConfig(
+                host=args.event_host,
+                port=args.event_port,
+                publish_camera=args.publish_camera,
+                camera_fps=args.camera_publish_fps,
+                jpeg_quality=args.camera_jpeg_quality,
+            )
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
+        integration_publisher = MLIntegrationPublisher(publisher_config)
+
+    return run(config, integration_publisher=integration_publisher)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest tests/test_integration_contracts.py -q)",
+      "Bash(python3 -m pytest tests/test_integration_contracts.py -q)",
+      "Bash(python3 -m pytest -q)"
+    ]
+  }
+}

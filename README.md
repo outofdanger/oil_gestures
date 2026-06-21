@@ -112,6 +112,18 @@ Run mouse diagnostics:
 python app/main.py --mouse-diagnostics
 ```
 
+## Autonomous integration
+
+Run ML as an independent producer of versioned JSON contracts:
+
+```bash
+python scripts/run_demo.py --event-server --publish-camera --headless
+```
+
+UI and 3D applications connect independently to `127.0.0.1:8765`. The
+language-neutral schema, transport rules, and consumer example are documented
+in [`docs/integration_contract.md`](docs/integration_contract.md).
+
 On Linux, verify the real X11 backend before starting the camera:
 
 ```bash
