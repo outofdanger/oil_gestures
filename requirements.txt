@@ -8,6 +8,9 @@ opencv-contrib-python==4.13.0.92
 numpy==2.4.6
 PyYAML==6.0.3
 
+# Dynamic gesture dataset processing and training.
+torch==2.12.1
+
 # Platform-specific cursor backends.
 pyobjc-framework-Quartz==11.1; sys_platform == "darwin"
 python-xlib==0.33; sys_platform == "linux"
