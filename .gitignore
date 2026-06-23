@@ -108,5 +108,7 @@ __marimo__/
 
 structure.txt
 *.pyc
+data/raw/*
+data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
