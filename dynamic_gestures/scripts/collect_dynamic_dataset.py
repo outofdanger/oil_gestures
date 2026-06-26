@@ -12,7 +12,9 @@ from typing import Any, Sequence
 import cv2
 import numpy as np
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+# dynamic_gestures/scripts/<file>.py -> parents[2] is the repository root (home of
+# the ``oil_gestures`` runtime package). CLI-relative paths resolve against it.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -37,10 +39,10 @@ logger = get_logger(__name__)
 WINDOW_NAME = "Dataset recorder | MediaPipe Tasks HandLandmarker"
 QUIT_KEY = ord((DEFAULT_SAFE_EXIT_KEY or "q")[:1])
 
-# Cap the capture/processing loop to this rate so recorded sequences keep a
-# stable cadence regardless of how fast the camera or MediaPipe can run.
-MAX_FPS = 20
-MIN_FRAME_INTERVAL = 1.0 / MAX_FPS
+# Default ceiling for the capture/processing loop. Acts as an upper bound only:
+# it slows a faster loop down to this rate but cannot exceed the real
+# camera + MediaPipe throughput. Override at runtime with --max-fps.
+DEFAULT_MAX_FPS = 15
 
 REQUIRED_LABEL_NAMES = (
     "IDLE",
@@ -69,11 +71,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Record MediaPipe HandLandmarker landmark sequences for dynamic gesture training."
     )
     parser.add_argument("--camera", type=int, default=0)
-    parser.add_argument("--output", type=str, default="data/raw")
+    parser.add_argument("--output", type=str, default="dynamic_gestures/data/raw")
     parser.add_argument("--seq-len", type=int, default=20)
     parser.add_argument("--width", type=int, default=640)
     parser.add_argument("--height", type=int, default=480)
     parser.add_argument("--fps", type=int, default=30)
+    parser.add_argument(
+        "--max-fps",
+        type=float,
+        default=DEFAULT_MAX_FPS,
+        help="Upper bound for the processing loop (0 disables the cap).",
+    )
     parser.add_argument("--fourcc", type=str, default="MJPG")
     parser.add_argument("--model", type=str, default=DEFAULT_MEDIAPIPE_MODEL_PATH)
     parser.add_argument(
@@ -373,6 +381,7 @@ def main() -> int:
             session: RecordingSession | None = None
             pending_label: str | None = None
             pending_until: float = 0.0
+            min_frame_interval = 1.0 / args.max_fps if args.max_fps > 0 else 0.0
 
             while True:
                 frame_start = time.perf_counter()
@@ -437,8 +446,8 @@ def main() -> int:
                     pending_until = now + args.start_delay
 
                 elapsed = time.perf_counter() - frame_start
-                if elapsed < MIN_FRAME_INTERVAL:
-                    time.sleep(MIN_FRAME_INTERVAL - elapsed)
+                if min_frame_interval and elapsed < min_frame_interval:
+                    time.sleep(min_frame_interval - elapsed)
     finally:
         if camera_stream is not None:
             camera_stream.release()
