@@ -2,6 +2,7 @@ import vtk
 from PySide6.QtCore import QObject, QTimer, Qt
 from PySide6.QtWidgets import QMenu
 from PySide6.QtGui import QCursor
+from PySide6.QtCore import Signal
 
 
 class Controller(QObject):
@@ -10,6 +11,7 @@ class Controller(QObject):
     Знает camera, model, scene, panel.
     Получает события от InputHandler.
     """
+    _ml_event = Signal(dict)
 
     def __init__(self, camera, model, scene, panel):
         super().__init__()
@@ -29,6 +31,7 @@ class Controller(QObject):
 
         # В __init__:
         self._ml_thread = None
+        self._ml_event.connect(self._on_ml_event_main)
         self._start_ml_client()
 
     # ========================
@@ -151,25 +154,41 @@ class Controller(QObject):
     # ========================
 
     def on_gesture(self, name: str, confidence: float = 1.0):
-        self.panel.set_message(f"Жест: {name} ({confidence:.0%})")
+        detail = self.model.get_highlighted()
+        
+        if name in ("FIST", "Closed_Fist"):
+            if detail and hasattr(detail, 'close') and not detail.has_animation():
+                self.model.execute_action(detail, 'close')
+                self._start_timer()
+                self.panel.set_message(f"✊ Закрыть: {detail.name}")
+            else:
+                self.panel.set_message("✊ Кулак (нет цели)")
+        
+        elif name in ("OPEN_PALM", "Open_Palm"):
+            if detail and hasattr(detail, 'open') and not detail.has_animation():
+                self.model.execute_action(detail, 'open')
+                self._start_timer()
+                self.panel.set_message(f"✋ Открыть: {detail.name}")
+            else:
+                self.panel.set_message("✋ Ладонь (нет цели)")
+        
+        elif name in ("THUMB_UP", "Thumb_Up"):
+            # Можно назначить на что-то — например, аварийный стоп
+            self._emergency_stop()
+            self.panel.set_message("👍 Аварийный стоп")
+        
+        elif name in ("VICTORY", "Victory"):
+            self.panel.set_message("✌ Победа (курсор вкл/выкл)")
 
     # ========================
     #  АВАРИЙНЫЙ СТОП
     # ========================
 
     def _emergency_stop(self):
-        for d in self.model.details:
-            if hasattr(d, 'state'):
-                d.state = "attached"
-                d.show()
-            if hasattr(d, 'stop'):
-                d.stop()
-        self.model._active.clear()
         if self.model.particle_systems:
             for ps in self.model.particle_systems.values():
                 ps.stop()
         self.panel.set_message("⚠ АВАРИЙНЫЙ СТОП")
-        self.panel.set_inventory([])
 
 
     def _on_inventory_click(self, name: str):
@@ -201,7 +220,7 @@ class Controller(QObject):
                         line, buffer = buffer.split("\n", 1)
                         if line:
                             event = json.loads(line)
-                            self._on_ml_event(event)
+                            self._ml_event.emit(event)
             except Exception as e:
                 print(f"ML client: {e}")
             finally:
@@ -210,20 +229,24 @@ class Controller(QObject):
         self._ml_thread = threading.Thread(target=read_events, daemon=True)
         self._ml_thread.start()
 
-    def _on_ml_event(self, event):
-        """Обработать событие от ML-сервера."""
+    def _on_ml_event_main(self, event):
+        """Вызывается в главном потоке."""
         contract = event.get("contract", "")
         
-        if contract == "oil_gestures.ml.camera_frame":
-            data = event.get("data_base64", "")
-            if data:
-                self.panel.set_camera_frame(data)
-        
-        elif contract == "oil_gestures.ml.runtime":
+        if contract == "oil_gestures.ml.runtime":
             gestures = event.get("gestures", {})
             static = gestures.get("static")
-            if static:
-                self.on_gesture(static)
             cursor = event.get("cursor", {})
-            if cursor.get("enabled"):
-                self.panel.set_message(f"Курсор: {cursor.get('action', 'NONE')}")
+            enabled = cursor.get("enabled", False)
+            
+            if enabled:
+                action = cursor.get("action", "NONE")
+                self.panel.set_message(f"🖐️ Курсор: {action}")
+            elif static and isinstance(static, dict):
+                name = static.get("name", "—")
+                conf = static.get("confidence", 0)
+                print(f"STATIC: {name} {conf:.2f}")  # ← добавь
+                self.panel.set_message(f"✋ {name} ({conf:.0%})")
+                self.on_gesture(name, conf)
+            else:
+                self.panel.set_message("👋 Рука есть")
