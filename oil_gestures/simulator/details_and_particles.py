@@ -74,6 +74,10 @@ class Valve(Detail):
         self._max = 360
         self._opened = False
 
+    @property
+    def is_open(self):
+        return self._opened
+
     def open(self):
         if self._target == self._max:
             self.stop()
@@ -181,7 +185,7 @@ class Manometer(Detail):
         try:
             tex = pv.read_texture("assets/gauge_face.png")
             self._gauge_face = plotter.add_mesh(plane, texture=tex, opacity=1.0)
-        except:
+        except (FileNotFoundError, OSError):
             self._gauge_face = plotter.add_mesh(plane, color="white", opacity=0.9)
 
         # Привязываем актор шкалы к манометру для подсветки
@@ -220,11 +224,7 @@ class Manometer(Detail):
     def unhighlight(self):
         super().unhighlight()
         if self._gauge_face:
-            try:
-                tex = pv.read_texture("assets/gauge_face.png")
-                self._gauge_face.GetProperty().SetColor(1.0, 1.0, 1.0)
-            except:
-                self._gauge_face.GetProperty().SetColor(1.0, 1.0, 1.0)
+            self._gauge_face.GetProperty().SetColor(1.0, 1.0, 1.0)
 
     # === Меню ===
 

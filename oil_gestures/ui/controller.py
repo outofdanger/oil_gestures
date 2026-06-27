@@ -1,24 +1,29 @@
-import vtk
 from PySide6.QtCore import QObject, QTimer, Qt
 from PySide6.QtWidgets import QMenu
 from PySide6.QtGui import QCursor
 from PySide6.QtCore import Signal
 
+from oil_gestures.integration.contracts import CAMERA_FRAME_CONTRACT
+from oil_gestures.simulator.simulator_controller import SimulatorController
+
 
 class Controller(QObject):
     """
-    Дирижёр: вся логика приложения.
-    Знает camera, model, scene, panel.
-    Получает события от InputHandler.
+    Дирижёр: вся Qt-специфичная логика приложения (таймер, мышь, клавиатура,
+    меню). Интерпретация ML-контракта (жест -> действие) делегирована
+    SimulatorController, чтобы эта логика оставалась без зависимости от Qt -
+    см. docs/interaction_spec.md и docs/integration_contract.md.
     """
     _ml_event = Signal(dict)
 
-    def __init__(self, camera, model, scene, panel):
+    def __init__(self, camera, model, scene, panel, simulator_controller=None,
+                 ml_host="127.0.0.1", ml_port=8765):
         super().__init__()
         self.camera = camera
         self.model = model
         self.scene = scene
         self.panel = panel
+        self.simulator_controller = simulator_controller or SimulatorController(model)
 
         # Таймер
         self._timer = QTimer()
@@ -32,7 +37,7 @@ class Controller(QObject):
         # В __init__:
         self._ml_thread = None
         self._ml_event.connect(self._on_ml_event_main)
-        self._start_ml_client()
+        self._start_ml_client(ml_host, ml_port)
 
     # ========================
     #  ТАЙМЕР
@@ -150,44 +155,11 @@ class Controller(QObject):
         elif key == Qt.Key_Right: cam.move(dx=0.3)
 
     # ========================
-    #  ЖЕСТЫ
-    # ========================
-
-    def on_gesture(self, name: str, confidence: float = 1.0):
-        detail = self.model.get_highlighted()
-        
-        if name in ("FIST", "Closed_Fist"):
-            if detail and hasattr(detail, 'close') and not detail.has_animation():
-                self.model.execute_action(detail, 'close')
-                self._start_timer()
-                self.panel.set_message(f"✊ Закрыть: {detail.name}")
-            else:
-                self.panel.set_message("✊ Кулак (нет цели)")
-        
-        elif name in ("OPEN_PALM", "Open_Palm"):
-            if detail and hasattr(detail, 'open') and not detail.has_animation():
-                self.model.execute_action(detail, 'open')
-                self._start_timer()
-                self.panel.set_message(f"✋ Открыть: {detail.name}")
-            else:
-                self.panel.set_message("✋ Ладонь (нет цели)")
-        
-        elif name in ("THUMB_UP", "Thumb_Up"):
-            # Можно назначить на что-то — например, аварийный стоп
-            self._emergency_stop()
-            self.panel.set_message("👍 Аварийный стоп")
-        
-        elif name in ("VICTORY", "Victory"):
-            self.panel.set_message("✌ Победа (курсор вкл/выкл)")
-
-    # ========================
     #  АВАРИЙНЫЙ СТОП
     # ========================
 
     def _emergency_stop(self):
-        if self.model.particle_systems:
-            for ps in self.model.particle_systems.values():
-                ps.stop()
+        self.model.emergency_stop()
         self.panel.set_message("⚠ АВАРИЙНЫЙ СТОП")
 
 
@@ -200,53 +172,52 @@ class Controller(QObject):
             self.panel.set_message(f"{name}: установлен(а)")
 
 
-    def _start_ml_client(self):
-        """Запустить поток чтения ML-событий."""
+    def _start_ml_client(self, host="127.0.0.1", port=8765):
+        """
+        Запустить поток чтения ML-событий через готовый, уже протестированный
+        oil_gestures.integration.client.iter_events - вместо ручного парсинга
+        NDJSON по сокету. Переподключается с backoff, если ML-сервер ещё не
+        поднялся (run_ui.py стартует ML и UI почти одновременно) или обрыв
+        соединения произошёл позже.
+        """
         import threading
-        import json
-        import socket
-        
+        import time
+
+        from oil_gestures.integration.client import iter_events
+
         def read_events():
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            try:
-                sock.connect(("127.0.0.1", 8765))
-                buffer = ""
-                while True:
-                    data = sock.recv(4096).decode()
-                    if not data:
-                        break
-                    buffer += data
-                    while "\n" in buffer:
-                        line, buffer = buffer.split("\n", 1)
-                        if line:
-                            event = json.loads(line)
-                            self._ml_event.emit(event)
-            except Exception as e:
-                print(f"ML client: {e}")
-            finally:
-                sock.close()
-        
+            backoff = 0.5
+            while True:
+                try:
+                    for event in iter_events(host=host, port=port, timeout=5.0):
+                        self._ml_event.emit(event)
+                    backoff = 0.5  # сервер закрыл поток штатно - не считаем сбоем
+                except OSError as exc:
+                    print(f"ML client: {exc}")
+                time.sleep(backoff)
+                backoff = min(backoff * 2, 5.0)
+
         self._ml_thread = threading.Thread(target=read_events, daemon=True)
         self._ml_thread.start()
 
     def _on_ml_event_main(self, event):
-        """Вызывается в главном потоке."""
-        contract = event.get("contract", "")
-        
-        if contract == "oil_gestures.ml.runtime":
-            gestures = event.get("gestures", {})
-            static = gestures.get("static")
-            cursor = event.get("cursor", {})
-            enabled = cursor.get("enabled", False)
-            
-            if enabled:
-                action = cursor.get("action", "NONE")
-                self.panel.set_message(f"🖐️ Курсор: {action}")
-            elif static and isinstance(static, dict):
-                name = static.get("name", "—")
-                conf = static.get("confidence", 0)
-                print(f"STATIC: {name} {conf:.2f}")  # ← добавь
-                self.panel.set_message(f"✋ {name} ({conf:.0%})")
-                self.on_gesture(name, conf)
-            else:
-                self.panel.set_message("👋 Рука есть")
+        """Вызывается в главном потоке. Интерпретация - в SimulatorController."""
+        if event.get("contract") == CAMERA_FRAME_CONTRACT:
+            data = event.get("data_base64")
+            if data:
+                self.panel.set_camera_frame(data)
+            return
+
+        result = self.simulator_controller.handle_event(event)
+
+        self.panel.set_gesture(result.gesture_name, result.gesture_confidence)
+
+        if result.emergency:
+            self._emergency_stop()
+            return
+
+        if result.message:
+            self.panel.set_message(result.message)
+
+        if result.action_taken:
+            self._start_timer()

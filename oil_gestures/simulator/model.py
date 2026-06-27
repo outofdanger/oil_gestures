@@ -134,7 +134,16 @@ class Model:
             if hasattr(d, 'state') and d.state == "removed":
                 items.append(d.name)
         return items
-    
+
+
+    # ========================
+    #  АВАРИЙНЫЙ СТОП
+    # ========================
+
+    def emergency_stop(self):
+        """Останавливает все потоки нефти/газа. FIST -> EMERGENCY_STOP, см. docs/command_mapping.md."""
+        for ps in self.particle_systems.values():
+            ps.stop()
 
     def get_by_name(self, name):
         for d in self.details:

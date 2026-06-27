@@ -4,6 +4,7 @@ from PySide6.QtGui import QIcon
 from oil_gestures.simulator.model import Model
 from oil_gestures.simulator.camera import Camera
 from oil_gestures.simulator.scene_3d import Scene3D
+from oil_gestures.simulator.simulator_controller import SimulatorController
 from oil_gestures.ui.control_panel import ControlPanel
 from oil_gestures.ui.input_handler import InputHandler
 from oil_gestures.ui.controller import Controller
@@ -34,7 +35,8 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.panel, 2)
 
 
-        self.controller = Controller(camera, model, self.scene, self.panel)
+        simulator_controller = SimulatorController(model)
+        self.controller = Controller(camera, model, self.scene, self.panel, simulator_controller)
         self.input_handler = InputHandler(self.scene.plotter, self.controller)
 
         print("Тренажер готов к работе!")

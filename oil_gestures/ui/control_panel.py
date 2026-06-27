@@ -23,6 +23,21 @@ class ControlPanel(QWidget):
         title.setStyleSheet("color: white; font-size: 14px; font-weight: bold;")
         layout.addWidget(title)
 
+        # Текущий статический жест - отдельный, всегда актуальный индикатор,
+        # независимый от лога действий ниже (message).
+        gesture_caption = QLabel("ТЕКУЩИЙ ЖЕСТ")
+        gesture_caption.setAlignment(Qt.AlignCenter)
+        gesture_caption.setStyleSheet("color: #7f8c8d; font-size: 11px; font-weight: bold;")
+        layout.addWidget(gesture_caption)
+
+        self.gesture_value = QLabel("—")
+        self.gesture_value.setAlignment(Qt.AlignCenter)
+        self.gesture_value.setStyleSheet(
+            "color: #2ecc71; font-size: 16px; font-weight: bold; "
+            "background-color: #1a1a2e; padding: 8px; border-radius: 6px;"
+        )
+        layout.addWidget(self.gesture_value)
+
         # Сообщение
         self.message = QLabel("Ожидание действий...")
         self.message.setAlignment(Qt.AlignCenter)
@@ -73,6 +88,17 @@ class ControlPanel(QWidget):
     def set_message(self, text: str):
         self.message.setText(text)
 
+    def set_gesture(self, name: str | None, confidence: float = 0.0):
+        """Текущий статический жест от ML (независимо от лога действий)."""
+        if not name:
+            self.gesture_value.setText("—")
+            return
+        try:
+            pct = f"{float(confidence):.0%}"
+        except (TypeError, ValueError):
+            pct = "?"
+        self.gesture_value.setText(f"{name}  ({pct})")
+
     def set_inventory(self, items: list):
         # Очистить старые кнопки
         while self.inventory_layout.count():
@@ -99,18 +125,23 @@ class ControlPanel(QWidget):
             self.inventory_layout.addWidget(btn)
 
 
-    # Добавить метод:
     def set_camera_frame(self, base64_data: str):
-        """Показать JPEG кадр из base64."""
+        """Показать JPEG кадр из base64 (oil_gestures.ml.camera_frame)."""
         from PySide6.QtGui import QPixmap
-        from PySide6.QtCore import QByteArray, QBuffer
         import base64
-        
-        data = base64.b64decode(base64_data)
+        import binascii
+
+        try:
+            data = base64.b64decode(base64_data)
+        except (binascii.Error, ValueError):
+            return
+
         pixmap = QPixmap()
-        pixmap.loadFromData(data, "JPEG")
+        if not pixmap.loadFromData(data, "JPEG"):
+            return
+
         self.camera_label.setPixmap(pixmap.scaled(
-            self.camera_label.size(), 
-            Qt.KeepAspectRatio, 
+            self.camera_label.size(),
+            Qt.KeepAspectRatio,
             Qt.SmoothTransformation
         ))

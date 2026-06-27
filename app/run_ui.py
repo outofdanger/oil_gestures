@@ -10,7 +10,8 @@ os.chdir(ROOT)
 ml = subprocess.Popen([
     sys.executable, "scripts/run_demo.py",
     "--event-server", "--headless",
-    "--cursor-on", "--real-mouse"
+    "--cursor-on", "--real-mouse",
+    "--publish-camera",
 ])
 
 # Запуск UI
