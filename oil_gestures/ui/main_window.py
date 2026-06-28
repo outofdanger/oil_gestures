@@ -14,7 +14,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(" Тренажер оператора скважины")
-        self.setWindowIcon(QIcon("assets/icon.png"))
+        self.setWindowIcon(QIcon("assets/ui/icon.png"))
         self.resize(1300, 700)
 
         central = QWidget()
@@ -31,7 +31,7 @@ class MainWindow(QMainWindow):
         camera = Camera(self.scene.plotter)
         model = Model(
             self.scene.plotter,
-            "assets/model.glb",
+            "assets/ui/scene/model.glb",
             particle_count=self.scene.profile.particle_count,
         )
 
@@ -44,3 +44,13 @@ class MainWindow(QMainWindow):
         self.input_handler = InputHandler(self.scene.plotter, self.controller)
 
         print("Тренажер готов к работе!")
+
+    def closeEvent(self, event):
+        # A gesture-opened menu (Controller.on_right_click via POINTING_INDEX)
+        # can sit open indefinitely waiting for THUMB_UP. Close it explicitly
+        # before Qt tears down the window, instead of relying solely on
+        # QMenu(self.scene)'s parenting to order destruction correctly -
+        # closing the window while it's still open segfaulted in
+        # QMenu::hideEvent (seen in a real crash dump) before this existed.
+        self.controller.close_open_menu()
+        super().closeEvent(event)

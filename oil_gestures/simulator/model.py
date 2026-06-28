@@ -96,6 +96,36 @@ class Model:
         return self._highlighted
 
     # ========================
+    #  ВЫБОР БЕЗ МЫШИ (SWIPE)
+    # ========================
+
+    def _selectable_details(self):
+        return [d for d in self.details if d.highlightable]
+
+    def highlight_first(self):
+        """Выбрать первый элемент. Используется, когда курсорный режим
+        выключен и наведения мышью не было - см. SimulatorController."""
+        items = self._selectable_details()
+        if items:
+            self.highlight(items[0])
+
+    def _highlight_step(self, step):
+        items = self._selectable_details()
+        if not items:
+            return
+        if self._highlighted not in items:
+            self.highlight(items[0])
+            return
+        index = items.index(self._highlighted)
+        self.highlight(items[(index + step) % len(items)])
+
+    def highlight_next(self):
+        self._highlight_step(1)
+
+    def highlight_previous(self):
+        self._highlight_step(-1)
+
+    # ========================
     #  МЕНЮ
     # ========================
 

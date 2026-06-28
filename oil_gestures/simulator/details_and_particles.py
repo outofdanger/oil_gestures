@@ -183,7 +183,7 @@ class Manometer(Detail):
         # Циферблат
         plane = pv.Plane(center=pos, direction=(0, 0, 1), i_size=size, j_size=size)
         try:
-            tex = pv.read_texture("assets/gauge_face.png")
+            tex = pv.read_texture("assets/ui/gauge_face.png")
             self._gauge_face = plotter.add_mesh(plane, texture=tex, opacity=1.0)
         except (FileNotFoundError, OSError):
             self._gauge_face = plotter.add_mesh(plane, color="white", opacity=0.9)

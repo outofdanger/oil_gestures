@@ -64,7 +64,7 @@ def load_model(plotter, filepath):
         details.append(detail)
 
 
-    blocks1 = pv.read("assets/controller.glb")
+    blocks1 = pv.read("assets/ui/scene/controller.glb")
     parts1 = extract_all_meshes(blocks1)
     print(len(parts1))
     obj = parts1[21]
@@ -78,7 +78,7 @@ def load_model(plotter, filepath):
     detail = Body(obj, actor, "controller", color)
     details.append(detail)
 
-    blocks1 = pv.read("assets/level_gauge.glb")
+    blocks1 = pv.read("assets/ui/scene/level_gauge.glb")
     parts1 = extract_all_meshes(blocks1)
     print(len(parts1))
     obj = parts1[1]

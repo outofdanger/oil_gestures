@@ -12,11 +12,37 @@ static:
     - VICTORY     # MediaPipe Victory
     - UNKNOWN
 
-# Reserved for learned dynamic-gesture models. Cursor rules do not belong here.
+# Learned dynamic-gesture model (POINTING_INDEX, SWIPE_LEFT/RIGHT,
+# ROTATE_CLOCKWISE/CCW, SQUEEZE/RELEASE). Cursor rules do not belong here.
+# Runs as a dual-model ensemble (gestures.dynamic.model_loader): ST-GCN leads
+# (fast trigger on hand pose), BiLSTM confirms/vetoes (suppresses false
+# fires) - see dynamic_gestures/scripts/test_dynamic_model.py, where this
+# logic was first validated on a live camera.
 dynamic:
   enabled: true
+  # Unused by the live model (it reads its own window length from each
+  # checkpoint) - kept for forward compatibility with other model backends.
   sequence_length: 40
-  min_confidence: 0.75
+  # ST-GCN (lead/trigger) probability needed on a non-IDLE class. ST-GCN fires
+  # on hand pose even with little motion, so keep this fairly high - but
+  # veto_floor below is the stronger lever against accidental swipes.
+  min_confidence: 0.82
+  # BiLSTM (confirm/veto) probability the proposed class must independently
+  # reach, or the trigger is suppressed. BiLSTM reads motion, so a high value
+  # means "only fire when the hand actually moved like the gesture" - this is
+  # what kills false swipes from small hand jitter. Lower it if real swipes
+  # start getting missed.
+  veto_floor: 0.70
+  # Minimum seconds between two dynamic-channel fires (stepping selection via
+  # SWIPE / opening a menu via POINTING_INDEX). Pure rate-limit - does not
+  # affect recognition or the continuous ROTATE gestures.
+  swipe_cooldown_seconds: 1.0
+  # Checkpoint pair loaded by gestures.dynamic.model_loader.load_dynamic_model().
+  # See dynamic_gestures/README.md for how they were trained and the other
+  # variants available in dynamic_gestures/models/. Either set to null
+  # disables dynamic recognition entirely (no model loaded).
+  stgcn_checkpoint_path: "assets/models/pytorch/dynamic_stgcn_merged.pt"
+  bilstm_checkpoint_path: "assets/models/pytorch/dynamic_bilstm_merged.pt"
 
 cursor:
   # Temporary manual gate. A learned dynamic model will control activation later.

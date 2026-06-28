@@ -1,4 +1,4 @@
-from PySide6.QtCore import QObject, Qt
+from PySide6.QtCore import QObject, QPoint, Qt
 from PySide6.QtWidgets import QMenu
 from PySide6.QtGui import QCursor
 
@@ -24,6 +24,9 @@ class Controller(QObject):
         self.scene = scene
         self.panel = panel
         self.simulator_controller = simulator_controller or SimulatorController(model)
+        # Текущее открытое контекстное меню (если есть) - чтобы THUMB_UP мог
+        # закрыть его программно после выполнения действия (см. on_right_click).
+        self._open_menu = None
 
         # Рендером управляет планировщик сцены (render-on-demand + кадровый
         # таймер анимации). Регистрируем колбэк одного кадра анимации.
@@ -82,7 +85,13 @@ class Controller(QObject):
         if not actions:
             return
 
-        menu = QMenu()
+        # Parented to self.scene (not parent-less) so Qt destroys it in the
+        # normal widget-tree order. An unparented popup that outlives the
+        # window it was shown over (easy now that popup() below is
+        # non-blocking and a gesture-opened menu can sit open indefinitely
+        # waiting for THUMB_UP) segfaults in QMenu::hideEvent if the main
+        # window closes while it's still open - seen in a real crash dump.
+        menu = QMenu(self.scene)
         menu.setStyleSheet("""
             QMenu {
                 background-color: white;
@@ -114,7 +123,54 @@ class Controller(QObject):
         for label, action in actions:
             menu.addAction(label, lambda a=action, d=detail: self._menu_action(d, a))
 
-        menu.exec(QCursor.pos())
+        self._open_menu = menu
+        menu.aboutToHide.connect(self._on_menu_closed)
+        # popup() показывает меню и возвращается немедленно (в отличие от
+        # exec(), который крутит вложенный event loop до закрытия меню) -
+        # exec() здесь подвешивал рендер 3D-сцены и камеры на всё время,
+        # пока меню открыто и ждёт THUMB_UP. С popup() кадровый тик и поток
+        # камеры продолжают идти как обычно.
+        menu.popup(self._menu_global_pos(detail))
+
+    def _menu_global_pos(self, detail):
+        """Где показать меню детали. В жестовом режиме физической мыши на
+        объекте нет (она может быть где угодно, даже вне окна), поэтому якорим
+        меню к самой детали: проецируем её 3D-центр в экран сцены. Любой сбой
+        проекции -> центр виджета сцены; в самом крайнем случае -> позиция
+        курсора (прежнее поведение)."""
+        interactor = self.scene.plotter.interactor
+        try:
+            cx, cy, cz = detail.center
+            renderer = self.scene.plotter.renderer
+            renderer.SetWorldPoint(cx, cy, cz, 1.0)
+            renderer.WorldToDisplay()
+            dx, dy, _ = renderer.GetDisplayPoint()
+            rw, rh = renderer.GetSize()
+            if rw > 0 and rh > 0:
+                # VTK: origin внизу-слева, физ. пиксели рендера. Qt: вверху-
+                # слева, логические пиксели виджета - тот же пересчёт, что в
+                # InputHandler._pick_at, но в обратную сторону (учитывает DPR).
+                lx = dx * interactor.width() / rw
+                ly = (rh - dy) * interactor.height() / rh
+                if 0 <= lx <= interactor.width() and 0 <= ly <= interactor.height():
+                    return interactor.mapToGlobal(QPoint(int(lx), int(ly)))
+            return interactor.mapToGlobal(interactor.rect().center())
+        except Exception:
+            return QCursor.pos()
+
+    def close_open_menu(self):
+        """Force-close a gesture-opened menu before the window goes away -
+        belt-and-suspenders alongside parenting it in on_right_click(); see
+        MainWindow.closeEvent."""
+        if self._open_menu is not None:
+            self._open_menu.close()
+
+    def _on_menu_closed(self):
+        # aboutToHide срабатывает и при программном close() (THUMB_UP, см.
+        # _on_ml_event_main), и при обычном клике вне меню/Esc - в обоих
+        # случаях армирование для жестового меню-флоу больше не актуально.
+        self._open_menu = None
+        self.simulator_controller.clear_armed()
 
     def _menu_action(self, detail, action):
         self.model.execute_action(detail, action)
@@ -192,6 +248,12 @@ class Controller(QObject):
 
         if result.message:
             self.panel.set_message(result.message)
+
+        if result.close_menu and self._open_menu is not None:
+            self._open_menu.close()
+
+        if result.open_menu and self._open_menu is None:
+            self.on_right_click()
 
         if result.action_taken:
             self._start_animation()
