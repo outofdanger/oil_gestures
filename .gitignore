@@ -112,3 +112,18 @@ data/raw/*
 data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+
+# Datasets — raw landmark recordings & processed tensors (large; never push)
+*.npz
+data/raw_*/
+dynamic_gestures/data/raw/*
+dynamic_gestures/data/processed/*
+!dynamic_gestures/data/raw/.gitkeep
+!dynamic_gestures/data/processed/.gitkeep
+!dynamic_gestures/data/README.md
+
+# Dataset archives
+*.zip
+
+# macOS junk
+.DS_Store

@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oil-gestures.local/contracts/ml_events.v1.schema.json",
+  "title": "Oil Gestures ML events v1",
+  "oneOf": [
+    { "$ref": "#/$defs/runtimeEvent" },
+    { "$ref": "#/$defs/cameraFrameEvent" }
+  ],
+  "$defs": {
+    "gesture": {
+      "type": ["object", "null"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "source": { "type": "string", "minLength": 1 }
+      },
+      "required": ["name", "confidence", "source"],
+      "additionalProperties": false
+    },
+    "runtimeEvent": {
+      "type": "object",
+      "properties": {
+        "contract": { "const": "oil_gestures.ml.runtime" },
+        "version": { "const": 1 },
+        "stream_id": { "type": "string", "format": "uuid" },
+        "sequence": { "type": "integer", "minimum": 1 },
+        "timestamp": { "type": "number" },
+        "frame": {
+          "type": "object",
+          "properties": {
+            "width": { "type": "integer", "minimum": 1 },
+            "height": { "type": "integer", "minimum": 1 },
+            "mirrored": { "type": "boolean" }
+          },
+          "required": ["width", "height", "mirrored"],
+          "additionalProperties": false
+        },
+        "performance": {
+          "type": "object",
+          "properties": {
+            "fps": { "type": "number", "minimum": 0 },
+            "inference_ms": { "type": "number", "minimum": 0 }
+          },
+          "required": ["fps", "inference_ms"],
+          "additionalProperties": false
+        },
+        "hand": {
+          "type": "object",
+          "properties": {
+            "detected": { "type": "boolean" },
+            "handedness": { "type": "string" },
+            "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+            "pointer": {
+              "type": ["object", "null"],
+              "properties": {
+                "x": { "type": "number" },
+                "y": { "type": "number" },
+                "visible": { "type": "boolean" },
+                "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+              },
+              "required": ["x", "y", "visible", "confidence"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["detected", "handedness", "confidence", "pointer"],
+          "additionalProperties": false
+        },
+        "gestures": {
+          "type": "object",
+          "properties": {
+            "static": { "$ref": "#/$defs/gesture" },
+            "dynamic": { "$ref": "#/$defs/gesture" },
+            "cursor": { "$ref": "#/$defs/gesture" }
+          },
+          "required": ["static", "dynamic", "cursor"],
+          "additionalProperties": false
+        },
+        "cursor": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "pressed": { "type": "boolean" },
+            "action": { "type": "string" },
+            "screen_position": {
+              "type": ["object", "null"],
+              "properties": {
+                "x": { "type": "integer" },
+                "y": { "type": "integer" }
+              },
+              "required": ["x", "y"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["enabled", "pressed", "action", "screen_position"],
+          "additionalProperties": false
+        },
+        "paused": { "type": "boolean" }
+      },
+      "required": [
+        "contract",
+        "version",
+        "stream_id",
+        "sequence",
+        "timestamp",
+        "frame",
+        "performance",
+        "hand",
+        "gestures",
+        "cursor",
+        "paused"
+      ],
+      "additionalProperties": false
+    },
+    "cameraFrameEvent": {
+      "type": "object",
+      "properties": {
+        "contract": { "const": "oil_gestures.ml.camera_frame" },
+        "version": { "const": 1 },
+        "stream_id": { "type": "string", "format": "uuid" },
+        "sequence": { "type": "integer", "minimum": 1 },
+        "timestamp": { "type": "number" },
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 },
+        "mirrored": { "type": "boolean" },
+        "encoding": { "const": "jpeg/base64" },
+        "data_base64": { "type": "string", "contentEncoding": "base64" }
+      },
+      "required": [
+        "contract",
+        "version",
+        "stream_id",
+        "sequence",
+        "timestamp",
+        "width",
+        "height",
+        "mirrored",
+        "encoding",
+        "data_base64"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

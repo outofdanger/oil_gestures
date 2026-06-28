@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest tests/test_integration_contracts.py -q)",
+      "Bash(python3 -m pytest tests/test_integration_contracts.py -q)",
+      "Bash(python3 -m pytest -q)",
+      "Bash(git check-ignore *)",
+      "Bash(.venv/bin/python -c \"import vtk, pyvista, PySide6; print\\('vtk', vtk.vtkVersion.GetVTKVersion\\(\\)\\); print\\('pyvista', pyvista.__version__\\); print\\('pyside6', PySide6.__version__\\)\")",
+      "Bash(.venv/bin/python -c ' *)",
+      "Bash(QT_QPA_PLATFORM=offscreen .venv/bin/python -)",
+      "Bash(echo \"EXIT CODE: $?\")",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q)",
+      "Bash(git stash *)",
+      "Bash(QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q tests/test_cursor_gestures.py::test_old_cursor_gesture_names_are_not_accepted)",
+      "Bash(echo \"=== exit $? \\(1=clean\\) ===\")",
+      "Bash(.venv/bin/python -m py_compile oil_gestures/simulator/render_profile.py oil_gestures/simulator/render_scheduler.py oil_gestures/ui/camera_frame_decoder.py oil_gestures/simulator/scene_3d.py oil_gestures/ui/controller.py oil_gestures/simulator/model.py oil_gestures/ui/main_window.py oil_gestures/ui/input_handler.py oil_gestures/simulator/details_and_particles.py oil_gestures/ui/control_panel.py)",
+      "Bash(echo \"\\(exit $?\\)\")"
+    ]
+  }
+}

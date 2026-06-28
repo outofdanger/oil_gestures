@@ -1,0 +1,17 @@
+# Direct runtime dependencies. Requires standard CPython 3.14.x.
+# Validated with CPython 3.14.6 (the free-threaded 3.14t build is not supported yet).
+mediapipe==0.10.35
+
+# MediaPipe depends on the contrib distribution. Do not install opencv-python
+# alongside it: both packages provide the same cv2 module.
+opencv-contrib-python==4.13.0.92
+numpy==2.4.6
+PyYAML==6.0.3
+-r requirements-ui.txt
+
+# Dynamic gesture dataset processing and training.
+torch==2.12.1
+
+# Platform-specific cursor backends.
+pyobjc-framework-Quartz==11.1; sys_platform == "darwin"
+python-xlib==0.33; sys_platform == "linux"

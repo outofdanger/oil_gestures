@@ -1,15 +1,14 @@
+# Документирует тот же маппинг, что и
+# oil_gestures/simulator/simulator_controller.py (см. docs/command_mapping.md).
+# Этот файл пока НЕ читается рантаймом (app/app_config.py его не парсит) -
+# это справочная копия мэппинга, а не действующая конфигурация.
 gesture_command_mode:
   enabled: false
 
   mapping:
-    POINTING_INDEX: "SELECT_OBJECT"
-    FIST: "GRAB_OBJECT"
-    OPEN_PALM: "RELEASE_OBJECT"
-    SQUEEZE: "GRAB_OBJECT"
-    RELEASE: "RELEASE_OBJECT"
-    ROTATE_CLOCKWISE: "INCREASE_WELL_PRESSURE"
-    ROTATE_COUNTERCLOCKWISE: "DECREASE_WELL_PRESSURE"
+    FIST: "EMERGENCY_STOP"
+    THUMB_UP: "OPEN_VALVE"
 
 safety:
   allow_emergency_stop: true
-  emergency_stop_gesture: null
+  emergency_stop_gesture: "FIST"

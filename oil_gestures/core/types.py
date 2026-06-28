@@ -42,12 +42,19 @@ class LandmarkPacket:
     The exact landmarks type is flexible for MVP because it may be a MediaPipe
     object, list of normalized points, numpy array, or custom structure.
 
+    raw_gesture / raw_gesture_score carry MediaPipe's built-in (canned) gesture
+    classification when the backend is the GestureRecognizer. They are the
+    MediaPipe category name (e.g. "Closed_Fist", "Open_Palm", "Thumb_Up",
+    "Victory", "None") and its score. They stay unset for landmark-only backends.
+
     Producer:
-        vision.mediapipe_landmarker.py
+        vision.mediapipe_gesture.py (landmarks + canned gesture)
+        vision.mediapipe_landmarker.py (landmarks only)
 
     Consumers:
         gestures.static.static_recognizer.py
         gestures.dynamic.sequence_buffer.py
+        gestures.cursor.cursor_recognizer.py
         cursor.hand_pointer.py
         vision.drawing.py
     """
@@ -57,27 +64,28 @@ class LandmarkPacket:
     handedness: Handedness
     confidence: float
     timestamp: float
+    raw_gesture: str | None = None
+    raw_gesture_score: float = 0.0
 
 
 @dataclass
 class GestureResult:
     """
-    Result of static or dynamic gesture recognition.
+    Result produced by an independent gesture-recognition subsystem.
 
-    Static examples:
-        OPEN_PALM, FIST, OK_SIGN, POINTING_INDEX
-
-    Dynamic examples:
-        SQUEEZE, RELEASE, ROTATE_CLOCKWISE, ROTATE_COUNTERCLOCKWISE
+    Examples:
+        static: OPEN_PALM, FIST, THUMB_UP, VICTORY
+        cursor: INDEX_MCP, INDEX_SQUEEZE, INDEX_RELEASE, MIDDLE_PINCH
 
     Producers:
         gestures.static.static_recognizer.py
         gestures.dynamic.dynamic_recognizer.py
+        gestures.cursor.cursor_recognizer.py
 
     Consumers:
-        cursor.action_mapper.py
         gestures.decision.gesture_fusion.py
         commands.command_mapper.py
+        cursor.action_mapper.py
         ui.status_panel.py
     """
 
@@ -92,7 +100,7 @@ class PointerPosition:
     """
     Normalized hand pointer position in camera coordinates.
 
-    Usually produced from INDEX_TIP or palm center.
+    Usually produced from INDEX_MCP, INDEX_TIP, or palm center.
 
     Coordinate range:
         x: 0.0 - 1.0
@@ -144,9 +152,10 @@ class CursorControlResult:
         - source gesture that caused the action, if any
 
     Example:
-        SQUEEZE -> CursorAction.GRAB
-        RELEASE -> CursorAction.RELEASE
-        ROTATE_CLOCKWISE -> CursorAction.ROTATE_CLOCKWISE
+        INDEX_MCP -> CursorAction.MOVE_CURSOR
+        INDEX_SQUEEZE -> CursorAction.GRAB
+        INDEX_RELEASE -> CursorAction.RELEASE
+        MIDDLE_PINCH -> CursorAction.RIGHT_CLICK
 
     Producer:
         cursor.cursor_pipeline.py / cursor.action_mapper.py
@@ -175,7 +184,7 @@ class MouseControlResult:
     Example:
         CursorAction.GRAB -> MouseAction.MOUSE_DOWN
         CursorAction.RELEASE -> MouseAction.MOUSE_UP
-        CursorAction.SELECT -> MouseAction.LEFT_CLICK
+        MOVE_CURSOR while grabbed -> MouseAction.DRAG
 
     Producer:
         cursor.mouse_controller.py or cursor action execution layer

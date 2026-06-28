@@ -1,43 +1,67 @@
+# Static gestures are recognized by MediaPipe's built-in (canned) gesture
+# classifier via the GestureRecognizer backend. min_confidence gates the
+# canned-gesture score before it is accepted.
 static:
   enabled: true
   min_confidence: 0.70
   smoothing_window: 5
   gestures:
-    - OPEN_PALM
-    - FIST
-    - OK_SIGN
+    - OPEN_PALM   # MediaPipe Open_Palm
+    - FIST        # MediaPipe Closed_Fist
+    - THUMB_UP    # MediaPipe Thumb_Up
+    - VICTORY     # MediaPipe Victory
     - UNKNOWN
 
+# Reserved for learned dynamic-gesture models. Cursor rules do not belong here.
 dynamic:
   enabled: true
   sequence_length: 40
   min_confidence: 0.75
-  use_rule_based_fallback: true
-  gestures:
-    - IDLE
-    - POINTING_INDEX
-    - SQUEEZE
-    - RELEASE
-    - ROTATE_CLOCKWISE
-    - ROTATE_COUNTERCLOCKWISE
 
 cursor:
-  enabled: true
-  pointer_source: "INDEX_TIP"
-  smoothing_alpha: 0.35
+  # Temporary manual gate. A learned dynamic model will control activation later.
+  enabled: false
+  pointer_source: "INDEX_MCP"
   dry_run: true
+  margin_x: 0.08
+  margin_top: 0.10
+  margin_bottom: 0.12
+  invert_y: false
+  smoothing_alpha: 1.0
+  min_cutoff: 7.0
+  beta: 0.080
+  derivative_cutoff: 1.0
+  dead_zone_points: 0.0
+  max_speed_points_per_second: 50000.0
+  reacquire_frames: 1
+  lost_reset_seconds: 0.20
+
+  # Cursor mode is toggled on/off by holding a static gesture. Debounced with a
+  # dwell timer, a release latch (one show = one toggle) and a cooldown floor.
+  activation:
+    enabled: true
+    gesture: "VICTORY"
+    hold_seconds: 0.5
+    cooldown_seconds: 1.0
+
+  recognition:
+    enabled: true
+    confidence: 1.0
+    index_pinch_tracking_enabled: true
+    index_pinch_thumb_tip: 4
+    index_pinch_tip: 8
+    index_squeeze_ratio: 0.10
+    index_release_ratio: 0.14
+    middle_pinch_tracking_enabled: true
+    middle_pinch_thumb_tip: 4
+    middle_pinch_tip: 12
+    middle_pinch_press_ratio: 0.10
+    middle_pinch_release_ratio: 0.14
 
 cursor_actions:
   cooldown_seconds: 0.50
-
-  dynamic_mapping:
-    POINTING_INDEX: "MOVE_CURSOR"
-    SQUEEZE: "GRAB"
-    RELEASE: "RELEASE"
-    ROTATE_CLOCKWISE: "INCREASE_PRESSURE"
-    ROTATE_COUNTERCLOCKWISE: "DECREASE_PRESSURE"
-
-  static_fallback_mapping:
-    OK_SIGN: "SELECT"
-    FIST: "GRAB"
-    OPEN_PALM: "RELEASE"
+  mapping:
+    INDEX_MCP: "MOVE_CURSOR"
+    INDEX_SQUEEZE: "GRAB"
+    INDEX_RELEASE: "RELEASE"
+    MIDDLE_PINCH: "RIGHT_CLICK"
