@@ -29,7 +29,11 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.scene, 8)
 
         camera = Camera(self.scene.plotter)
-        model = Model(self.scene.plotter, "assets/model.glb")
+        model = Model(
+            self.scene.plotter,
+            "assets/model.glb",
+            particle_count=self.scene.profile.particle_count,
+        )
 
         self.panel = ControlPanel()
         layout.addWidget(self.panel, 2)

@@ -125,23 +125,14 @@ class ControlPanel(QWidget):
             self.inventory_layout.addWidget(btn)
 
 
-    def set_camera_frame(self, base64_data: str):
-        """Показать JPEG кадр из base64 (oil_gestures.ml.camera_frame)."""
+    def set_camera_image(self, image):
+        """Показать уже декодированный и отмасштабированный кадр камеры.
+
+        Декодирование (base64 + JPEG + scale) выполняется вне GUI-потока в
+        oil_gestures.ui.camera_frame_decoder, сюда приходит готовый ``QImage`` —
+        остаётся лишь дёшево превратить его в ``QPixmap``."""
         from PySide6.QtGui import QPixmap
-        import base64
-        import binascii
 
-        try:
-            data = base64.b64decode(base64_data)
-        except (binascii.Error, ValueError):
+        if image is None or image.isNull():
             return
-
-        pixmap = QPixmap()
-        if not pixmap.loadFromData(data, "JPEG"):
-            return
-
-        self.camera_label.setPixmap(pixmap.scaled(
-            self.camera_label.size(),
-            Qt.KeepAspectRatio,
-            Qt.SmoothTransformation
-        ))
+        self.camera_label.setPixmap(QPixmap.fromImage(image))

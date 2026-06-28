@@ -3,7 +3,7 @@ from oil_gestures.simulator.details_and_particles import ParticleSystem, Manomet
 
 
 class Model:
-    def __init__(self, plotter, filepath):
+    def __init__(self, plotter, filepath, particle_count=760):
         self.plotter = plotter
         self.details = load_model(plotter, filepath)
         self.particle_systems = {}
@@ -19,42 +19,48 @@ class Model:
             plotter,
             position=(-0.6, 8.16, -0.11),
             direction=(0, 1, 0),
-            particle_type=ParticleSystem.OIL
+            particle_type=ParticleSystem.OIL,
+            count=particle_count,
         )
 
         self.particle_systems["2"] = ParticleSystem(
             plotter,
             position=(2.14, 6.3, -0.11),
             direction=(0, 1, 0),
-            particle_type=ParticleSystem.OIL
+            particle_type=ParticleSystem.OIL,
+            count=particle_count,
         )
 
         self.particle_systems["3"] = ParticleSystem(
             plotter,
             position=(4.7, 4, -0.11),
             direction=(0, -1, 0),
-            particle_type=ParticleSystem.OIL
+            particle_type=ParticleSystem.OIL,
+            count=particle_count,
         )
 
         self.particle_systems["4"] = ParticleSystem(
             plotter,
             position=(-3.9, 3.5, -0.11),
             direction=(0, 1, 0),
-            particle_type=ParticleSystem.GAS
+            particle_type=ParticleSystem.GAS,
+            count=particle_count,
         )
 
         self.particle_systems["5"] = ParticleSystem(
             plotter,
             position=(-4.11, 2.97, -0.11),
             direction=(-1, 0, 0),
-            particle_type=ParticleSystem.GAS
+            particle_type=ParticleSystem.GAS,
+            count=particle_count,
         )
 
         self.particle_systems["6"] = ParticleSystem(
             plotter,
             position=(-1.9, 2, -0.11),
             direction=(-1, 0, 0),
-            particle_type=ParticleSystem.GAS
+            particle_type=ParticleSystem.GAS,
+            count=particle_count,
         )
 
     # ========================
@@ -75,13 +81,16 @@ class Model:
         return None
 
     def highlight(self, detail):
+        """Подсветить деталь под курсором. Возвращает True, если подсветка
+        изменилась (значит, сцену нужно перерисовать)."""
         if detail == self._highlighted:
-            return
+            return False
         if self._highlighted:
             self._highlighted.unhighlight()
         self._highlighted = detail
         if detail:
             detail.highlight()
+        return True
 
     def get_highlighted(self):
         return self._highlighted

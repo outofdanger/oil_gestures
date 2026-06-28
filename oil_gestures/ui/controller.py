@@ -1,10 +1,11 @@
-from PySide6.QtCore import QObject, QTimer, Qt
+from PySide6.QtCore import QObject, Qt
 from PySide6.QtWidgets import QMenu
 from PySide6.QtGui import QCursor
-from PySide6.QtCore import Signal
 
 from oil_gestures.integration.contracts import CAMERA_FRAME_CONTRACT
+from oil_gestures.integration.qt_client import QtEventClient
 from oil_gestures.simulator.simulator_controller import SimulatorController
+from oil_gestures.ui.camera_frame_decoder import CameraFrameDecoder
 
 
 class Controller(QObject):
@@ -14,7 +15,6 @@ class Controller(QObject):
     SimulatorController, чтобы эта логика оставалась без зависимости от Qt -
     см. docs/interaction_spec.md и docs/integration_contract.md.
     """
-    _ml_event = Signal(dict)
 
     def __init__(self, camera, model, scene, panel, simulator_controller=None,
                  ml_host="127.0.0.1", ml_port=8765):
@@ -25,40 +25,38 @@ class Controller(QObject):
         self.panel = panel
         self.simulator_controller = simulator_controller or SimulatorController(model)
 
-        # Таймер
-        self._timer = QTimer()
-        self._timer.timeout.connect(self._on_tick)
-        self._timer_active = False
+        # Рендером управляет планировщик сцены (render-on-demand + кадровый
+        # таймер анимации). Регистрируем колбэк одного кадра анимации.
+        self.scene.scheduler.set_tick(self._frame_tick)
+
+        # Декодирование кадров камеры — в отдельном потоке (latest-wins),
+        # чтобы JPEG-декод не конкурировал с рендером 3D-сцены за GUI-поток.
+        self._camera_decoder = CameraFrameDecoder(self)
+        self._camera_decoder.frame_ready.connect(self.panel.set_camera_image)
 
         # Связи с панелью
         self.panel.emergency_clicked.connect(self._emergency_stop)
         self.panel.inventory_item_clicked.connect(self._on_inventory_click)
 
-        # В __init__:
-        self._ml_thread = None
-        self._ml_event.connect(self._on_ml_event_main)
-        self._start_ml_client(ml_host, ml_port)
+        # Поток событий ML — на нативном QTcpSocket (без Python-потока и без
+        # конкуренции за GIL): события приходят прямо в GUI-поток.
+        self._ml_client = QtEventClient(ml_host, ml_port, parent=self)
+        self._ml_client.event_received.connect(self._on_ml_event_main)
+        self._ml_client.start()
 
     # ========================
-    #  ТАЙМЕР
+    #  КАДР / РЕНДЕР
     # ========================
 
-    def _start_timer(self):
-        if not self._timer_active:
-            self._timer.start(16)
-            self._timer_active = True
+    def _start_animation(self):
+        """Запустить кадровый таймер анимации (камера/вентили/частицы)."""
+        self.scene.scheduler.start_animation()
 
-    def _stop_timer(self):
-        if not self.model.has_active() and not self.camera.is_rotating():
-            self._timer.stop()
-            self._timer_active = False
-
-    def _on_tick(self):
-        self.camera.tick()
-        self.model.tick()
-        self.scene.update()
-        if not self.model.has_active() and not self.camera.is_rotating():
-            self._stop_timer()
+    def _frame_tick(self, dt):
+        """Один кадр анимации. Возвращает True, пока что-то ещё движется."""
+        self.camera.tick(dt)
+        self.model.tick(dt)
+        return self.model.has_active() or self.camera.is_rotating()
 
     # ========================
     #  МЫШЬ — ОТ INPUT HANDLER
@@ -66,11 +64,12 @@ class Controller(QObject):
 
     def on_mouse_move(self, actor):
         detail = self.model.get_by_actor(actor)
-        self.model.highlight(detail)
+        if self.model.highlight(detail):
+            self.scene.request_render()
 
     def on_left_drag(self, dx):
         self.camera.start_rotate(-dx * 51)
-        self._start_timer()
+        self._start_animation()
 
     def on_left_release(self):
         self.camera.stop_rotate()
@@ -119,7 +118,7 @@ class Controller(QObject):
 
     def _menu_action(self, detail, action):
         self.model.execute_action(detail, action)
-        self._start_timer()
+        self._start_animation()
         if hasattr(detail, 'state'):
             self.panel.set_inventory(self.model.get_inventory())
 
@@ -129,6 +128,7 @@ class Controller(QObject):
 
     def on_wheel(self, delta):
         self.camera.zoom(0.9 if delta > 0 else 1.1)
+        self.scene.request_render()
 
     # ========================
     #  КЛАВИАТУРА
@@ -145,14 +145,15 @@ class Controller(QObject):
                 if ps._active:
                     ps.stop()
                     self.panel.set_message(f"Частицы {key_str}: выкл")
+                    self.scene.request_render()
                 else:
                     ps.start()
-                    self._start_timer()
+                    self._start_animation()
                     self.panel.set_message(f"Частицы {key_str}: вкл")
-        elif key == Qt.Key_Up: cam.move(dy=0.3)
-        elif key == Qt.Key_Down: cam.move(dy=-0.3)
-        elif key == Qt.Key_Left: cam.move(dx=-0.3)
-        elif key == Qt.Key_Right: cam.move(dx=0.3)
+        elif key == Qt.Key_Up: cam.move(dy=0.3); self.scene.request_render()
+        elif key == Qt.Key_Down: cam.move(dy=-0.3); self.scene.request_render()
+        elif key == Qt.Key_Left: cam.move(dx=-0.3); self.scene.request_render()
+        elif key == Qt.Key_Right: cam.move(dx=0.3); self.scene.request_render()
 
     # ========================
     #  АВАРИЙНЫЙ СТОП
@@ -161,6 +162,7 @@ class Controller(QObject):
     def _emergency_stop(self):
         self.model.emergency_stop()
         self.panel.set_message("⚠ АВАРИЙНЫЙ СТОП")
+        self.scene.request_render()
 
 
     def _on_inventory_click(self, name: str):
@@ -170,42 +172,14 @@ class Controller(QObject):
             self.model._active.discard(detail)
             self.panel.set_inventory(self.model.get_inventory())
             self.panel.set_message(f"{name}: установлен(а)")
-
-
-    def _start_ml_client(self, host="127.0.0.1", port=8765):
-        """
-        Запустить поток чтения ML-событий через готовый, уже протестированный
-        oil_gestures.integration.client.iter_events - вместо ручного парсинга
-        NDJSON по сокету. Переподключается с backoff, если ML-сервер ещё не
-        поднялся (run_ui.py стартует ML и UI почти одновременно) или обрыв
-        соединения произошёл позже.
-        """
-        import threading
-        import time
-
-        from oil_gestures.integration.client import iter_events
-
-        def read_events():
-            backoff = 0.5
-            while True:
-                try:
-                    for event in iter_events(host=host, port=port, timeout=5.0):
-                        self._ml_event.emit(event)
-                    backoff = 0.5  # сервер закрыл поток штатно - не считаем сбоем
-                except OSError as exc:
-                    print(f"ML client: {exc}")
-                time.sleep(backoff)
-                backoff = min(backoff * 2, 5.0)
-
-        self._ml_thread = threading.Thread(target=read_events, daemon=True)
-        self._ml_thread.start()
+            self.scene.request_render()
 
     def _on_ml_event_main(self, event):
         """Вызывается в главном потоке. Интерпретация - в SimulatorController."""
         if event.get("contract") == CAMERA_FRAME_CONTRACT:
             data = event.get("data_base64")
             if data:
-                self.panel.set_camera_frame(data)
+                self._camera_decoder.submit(data, self.panel.camera_label.size())
             return
 
         result = self.simulator_controller.handle_event(event)
@@ -220,4 +194,4 @@ class Controller(QObject):
             self.panel.set_message(result.message)
 
         if result.action_taken:
-            self._start_timer()
+            self._start_animation()

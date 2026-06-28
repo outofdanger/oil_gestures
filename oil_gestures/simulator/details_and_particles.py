@@ -336,41 +336,50 @@ class ParticleSystem:
         if not self._active:
             return
 
-        for i in range(self._count):
-            if self._lifetimes[i] <= 0:
-                angle1 = np.random.uniform(0, np.pi / 6)
-                angle2 = np.random.uniform(0, 2 * np.pi)  # вращение вокруг оси
-                dir_rotated = self._rotate_cone(self.direction, angle1, angle2)
-                speed = np.random.uniform(self._speed_min, self._speed_max)
-                self._positions[i] = self.position.copy()
-                self._velocities[i] = dir_rotated * speed
-                self._lifetimes[i] = np.random.uniform(self._lifetime_min, self._lifetime_max)
-            else:
-                self._velocities[i] += self._gravity * dt
-                self._positions[i] += self._velocities[i] * dt
-                self._lifetimes[i] -= dt
+        # Полностью векторно (без Python-цикла по частицам): «мёртвые» частицы
+        # перерождаются, живые — интегрируются. Это снимает главный CPU-боттлнек.
+        dead = self._lifetimes <= 0
+        n_dead = int(np.count_nonzero(dead))
+        if n_dead:
+            dirs = self._random_cone_dirs(n_dead)
+            speeds = np.random.uniform(self._speed_min, self._speed_max, (n_dead, 1))
+            self._positions[dead] = self.position
+            self._velocities[dead] = dirs * speeds
+            self._lifetimes[dead] = np.random.uniform(
+                self._lifetime_min, self._lifetime_max, n_dead
+            )
+
+        alive = ~dead
+        if np.any(alive):
+            self._velocities[alive] += self._gravity * dt
+            self._positions[alive] += self._velocities[alive] * dt
+            self._lifetimes[alive] -= dt
 
         self._mesh.points = self._positions
         self._actor.GetMapper().SetInputData(self._mesh)
 
-    def _rotate_cone(self, v, angle1, angle2):
-        """Поворот вектора в конусе: angle1 — отклонение, angle2 — вокруг оси."""
-        # Случайная ось, перпендикулярная v
-        if abs(v[0]) < 0.001 and abs(v[2]) < 0.001:
-            perp = np.array([1, 0, 0])
+    def _random_cone_dirs(self, n):
+        """n случайных единичных направлений в конусе вокруг self.direction."""
+        v = self.direction
+        if abs(v[0]) < 1e-3 and abs(v[2]) < 1e-3:
+            perp = np.array([1.0, 0.0, 0.0])
         else:
-            perp = np.array([-v[2], 0, v[0]])
+            perp = np.array([-v[2], 0.0, v[0]])
         perp = perp / np.linalg.norm(perp)
-        
-        # Поворот вокруг perp на angle1
-        v = self._rot(v, perp, angle1)
-        # Поворот вокруг исходной оси на angle2
-        v = self._rot(v, np.array(self.direction), angle2)
-        return v
 
-    def _rot(self, v, axis, angle):
-        """Поворот вектора вокруг оси."""
+        a1 = np.random.uniform(0, np.pi / 6, n)   # отклонение от оси
+        a2 = np.random.uniform(0, 2 * np.pi, n)   # разворот вокруг оси
+
+        base = np.broadcast_to(v, (n, 3))
+        tilted = self._rodrigues(base, perp, a1)
+        return self._rodrigues(tilted, v, a2)
+
+    @staticmethod
+    def _rodrigues(vec, axis, angle):
+        """Поворот строк vec вокруг axis на углы angle (формула Родрига, векторно)."""
         axis = axis / np.linalg.norm(axis)
-        cos_a = np.cos(angle)
-        sin_a = np.sin(angle)
-        return v * cos_a + np.cross(axis, v) * sin_a + axis * np.dot(axis, v) * (1 - cos_a)
+        cos_a = np.cos(angle)[:, None]
+        sin_a = np.sin(angle)[:, None]
+        cross = np.cross(np.broadcast_to(axis, vec.shape), vec)
+        dot = vec @ axis
+        return vec * cos_a + cross * sin_a + axis[None, :] * dot[:, None] * (1.0 - cos_a)
