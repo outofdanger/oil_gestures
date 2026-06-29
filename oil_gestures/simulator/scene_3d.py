@@ -3,6 +3,7 @@ from pyvistaqt import QtInteractor
 from PySide6.QtWidgets import QWidget, QVBoxLayout
 from PySide6.QtCore import Qt
 
+
 class Scene3D(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -18,11 +19,10 @@ class Scene3D(QWidget):
         self.plotter.interactor.setFocusPolicy(Qt.StrongFocus)
         self.plotter.interactor.setFocus()
 
-
         ground = pv.Plane(center=(0, -0.02, 0), direction=(0, 1, 0), i_size=12, j_size=20)
         self._ground_actor = self.plotter.add_mesh(ground, color="black", show_edges=False, opacity=0.6)
         self._ground_actor.SetPickable(False)
-        
+
         self.plotter.background_color = "white"
         self.plotter.view_xy()
         self.plotter.camera.zoom(1.8)

@@ -33,8 +33,10 @@ class MainWindow(QMainWindow):
         self.panel = ControlPanel()
         layout.addWidget(self.panel, 2)
 
-
         self.controller = Controller(camera, model, self.scene, self.panel)
         self.input_handler = InputHandler(self.scene.plotter, self.controller)
+
+        self.panel.set_inventory(model.get_inventory())
+        self.scene.plotter.interactor.setFocus()
 
         print("Тренажер готов к работе!")

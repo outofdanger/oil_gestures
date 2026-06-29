@@ -34,7 +34,7 @@ class InputHandler(QObject):
         return False
 
     # ========================
-    #  ПИКИНГ
+    # ПИКИНГ
     # ========================
 
     def _pick(self, event):
@@ -51,7 +51,7 @@ class InputHandler(QObject):
         return picker.GetActor()
 
     # ========================
-    #  МЫШЬ
+    # МЫШЬ
     # ========================
 
     def _on_mouse_move(self, event):
@@ -61,12 +61,11 @@ class InputHandler(QObject):
         if self._mouse_pressed and self._mouse_button == Qt.LeftButton:
             x = event.position().x()
             dx = x - self._mouse_press_x
-            self._mouse_press_x = x
+
             if abs(dx) > 1:
                 self._mouse_has_moved = True
+                self._mouse_press_x = x
                 self.controller.on_left_drag(dx)
-            else:
-                self.controller.on_left_drag(0)
 
         return True
 
@@ -82,17 +81,26 @@ class InputHandler(QObject):
 
     def _on_release(self, event):
         btn = event.button()
+
         if btn == Qt.LeftButton:
+            if self._mouse_pressed and not self._mouse_has_moved:
+                actor = self._pick(event)
+                self.controller.on_left_click()
+            else:
+                self.controller.on_left_release()
+
             self._mouse_pressed = False
             self._mouse_button = None
-            self.controller.on_left_release()
             return True
+
         elif btn == Qt.RightButton:
             if self._mouse_pressed and not self._mouse_has_moved:
                 self.controller.on_right_click()
+
             self._mouse_pressed = False
             self._mouse_button = None
             return True
+
         return False
 
     def _on_wheel(self, event):

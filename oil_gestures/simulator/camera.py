@@ -10,19 +10,24 @@ class Camera:
         self._min_zoom = 2.4
         self._max_zoom = 73.0
 
-        # Вращение
         self._speed = 0
         self._decaying = False
 
+        self._saved_position = None
+
     def save_default(self):
-        self._default = self.plotter.camera_position
+        self._default = self._copy_camera_position(self.plotter.camera_position)
 
     def reset(self):
         if self._default:
-            self.plotter.camera_position = self._default
+            self.plotter.camera_position = self._copy_camera_position(self._default)
+
+    def _copy_camera_position(self, cam_pos):
+        pos, focus, viewup = cam_pos
+        return [tuple(pos), tuple(focus), tuple(viewup)]
 
     # ========================
-    #  ВРАЩЕНИЕ
+    # ВРАЩЕНИЕ
     # ========================
 
     def start_rotate(self, speed):
@@ -50,14 +55,16 @@ class Camera:
         axis = np.array((0, 1, 0))
         cos_a = np.cos(angle)
         sin_a = np.sin(angle)
-        rotated = (direction * cos_a +
-                   np.cross(axis, direction) * sin_a +
-                   axis * np.dot(axis, direction) * (1 - cos_a))
+        rotated = (
+            direction * cos_a
+            + np.cross(axis, direction) * sin_a
+            + axis * np.dot(axis, direction) * (1 - cos_a)
+        )
         new_pos = tuple(np.array(focus) + rotated)
         self.plotter.camera_position = [new_pos, focus, (0, 1, 0)]
 
     # ========================
-    #  ZOOM
+    # ZOOM
     # ========================
 
     def zoom(self, factor):
@@ -70,7 +77,43 @@ class Camera:
         self.plotter.camera_position = [new_pos, focus, (0, 1, 0)]
 
     # ========================
-    #  ПЕРЕМЕЩЕНИЕ
+    # ФОКУС НА УРОВНЕМЕР
+    # ========================
+
+    def save_current_view(self):
+        self._saved_position = self._copy_camera_position(self.plotter.camera_position)
+
+    def restore_saved_view(self):
+        if self._saved_position is not None:
+            self.plotter.camera_position = self._copy_camera_position(self._saved_position)
+            self._saved_position = None
+
+    def focus_on_level_gauge(self, bounds):
+        x0, x1, y0, y1, z0, z1 = bounds
+
+        sx = x1 - x0
+        sy = y1 - y0
+        sz = z1 - z0
+        size = max(sx, sy, sz, 0.5)
+
+        focus = np.array([
+            x0 + sx * 0.50,
+            y0 + sy * 0.55,
+            z0 + sz * 0.55,
+        ], dtype=float)
+
+        distance = max(self._min_zoom, min(self._max_zoom, size * 2.6))
+
+        pos = np.array([
+            focus[0],
+            focus[1] + size * 0.08,
+            z1 + distance,
+        ], dtype=float)
+
+        self.plotter.camera_position = [tuple(pos), tuple(focus), (0, 1, 0)]
+
+    # ========================
+    # ПЕРЕМЕЩЕНИЕ
     # ========================
 
     def move(self, dx=0, dy=0, dz=0):
@@ -92,10 +135,17 @@ class Camera:
         self.plotter.camera_position = [new_pos, new_focus, (0, 1, 0)]
 
     # ========================
-    #  РАКУРСЫ
+    # РАКУРСЫ
     # ========================
 
-    def view_top(self): self.plotter.view_xy()
-    def view_front(self): self.plotter.view_xz()
-    def view_side(self): self.plotter.view_yz()
-    def view_iso(self): self.plotter.view_isometric()
+    def view_top(self):
+        self.plotter.view_xy()
+
+    def view_front(self):
+        self.plotter.view_xz()
+
+    def view_side(self):
+        self.plotter.view_yz()
+
+    def view_iso(self):
+        self.plotter.view_isometric()

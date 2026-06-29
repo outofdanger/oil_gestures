@@ -33,18 +33,6 @@ class ControlPanel(QWidget):
         )
         layout.addWidget(self.message)
 
-
-        # В __init__ после message:
-        self.camera_label = QLabel("КАМЕРА")
-        self.camera_label.setAlignment(Qt.AlignCenter)
-        self.camera_label.setMinimumHeight(150)
-        self.camera_label.setStyleSheet(
-            "background-color: #1a1a2e; color: gray; border: 1px solid #34495e; border-radius: 4px;"
-        )
-        layout.addWidget(self.camera_label)
-
-
-
         # Инвентарь
         self.inventory_label = QLabel("ИНВЕНТАРЬ")
         self.inventory_label.setStyleSheet("color: #f39c12; font-size: 12px; font-weight: bold; padding: 4px;")
@@ -97,20 +85,3 @@ class ControlPanel(QWidget):
             """)
             btn.clicked.connect(lambda checked, name=item: self.inventory_item_clicked.emit(name))
             self.inventory_layout.addWidget(btn)
-
-
-    # Добавить метод:
-    def set_camera_frame(self, base64_data: str):
-        """Показать JPEG кадр из base64."""
-        from PySide6.QtGui import QPixmap
-        from PySide6.QtCore import QByteArray, QBuffer
-        import base64
-        
-        data = base64.b64decode(base64_data)
-        pixmap = QPixmap()
-        pixmap.loadFromData(data, "JPEG")
-        self.camera_label.setPixmap(pixmap.scaled(
-            self.camera_label.size(), 
-            Qt.KeepAspectRatio, 
-            Qt.SmoothTransformation
-        ))

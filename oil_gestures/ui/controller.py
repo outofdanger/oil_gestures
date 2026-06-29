@@ -1,9 +1,7 @@
-import vtk
-from PySide6.QtCore import QObject, QTimer, Qt
+from PySide6.QtCore import QObject, QTimer, Qt, Signal
 from PySide6.QtWidgets import QMenu
 from PySide6.QtGui import QCursor
-from PySide6.QtCore import Signal
-
+from oil_gestures.simulator.details_and_particles import Flap
 
 class Controller(QObject):
     """
@@ -20,22 +18,25 @@ class Controller(QObject):
         self.scene = scene
         self.panel = panel
 
-        # Таймер
         self._timer = QTimer()
         self._timer.timeout.connect(self._on_tick)
         self._timer_active = False
 
-        # Связи с панелью
+        self._measure_timer = QTimer()
+        self._measure_timer.setSingleShot(True)
+        self._measure_timer.timeout.connect(self._on_measure_complete)
+
+        self._level_gauge_zoomed = False
+
         self.panel.emergency_clicked.connect(self._emergency_stop)
         self.panel.inventory_item_clicked.connect(self._on_inventory_click)
 
-        # В __init__:
         self._ml_thread = None
         self._ml_event.connect(self._on_ml_event_main)
         self._start_ml_client()
 
     # ========================
-    #  ТАЙМЕР
+    # ТАЙМЕР
     # ========================
 
     def _start_timer(self):
@@ -56,7 +57,7 @@ class Controller(QObject):
             self._stop_timer()
 
     # ========================
-    #  МЫШЬ — ОТ INPUT HANDLER
+    # МЫШЬ — ОТ INPUT HANDLER
     # ========================
 
     def on_mouse_move(self, actor):
@@ -70,71 +71,148 @@ class Controller(QObject):
     def on_left_release(self):
         self.camera.stop_rotate()
 
+    def on_left_click(self):
+        detail = self.model.get_highlighted()
+        if detail is None:
+            return
+
+        if isinstance(detail, Flap):
+            self.model.execute_action(detail, "pulse_open")
+            self._start_timer()
+            self.panel.set_message("Flap: стравливание давления")
+            return
+
+        if detail.name == "level_gauge_button_mode":
+            self.model.level_gauge_ui.press_mode()
+            self.model.update_level_gauge_screen()
+            self.scene.update()
+            self.panel.set_message("Уровнемер: выбор режима")
+            return
+
+        if detail.name == "level_gauge_button_input_output":
+            ui = self.model.level_gauge_ui
+            screen_before = ui.current_screen
+            ui.press_input_output()
+            # If we just entered a measurement screen, start the 3-second timer
+            if ui.current_screen in ("measure_level", "measure_pressure") and screen_before != ui.current_screen:
+                self._measure_timer.start(2000)
+            self.model.update_level_gauge_screen()
+            self.scene.update()
+            self.panel.set_message("Уровнемер: ввод/вывод")
+            return
+
+        if detail.name == "level_gauge_button_level":
+            self.model.level_gauge_ui.press_level()
+            self._measure_timer.start(2000)
+            self.model.update_level_gauge_screen()
+            self.scene.update()
+            self.panel.set_message("Уровнемер: измерение уровня")
+            return
+
+        if detail.name == "level_gauge_button_return":
+            self.model.level_gauge_ui.press_return()
+            self.model.update_level_gauge_screen()
+            self.scene.update()
+            self.panel.set_message("Уровнемер: главный экран")
+            return
+
     def on_right_click(self):
         detail = self.model.get_highlighted()
         if detail is None:
             return
-        actions = self.model.get_menu_actions(detail)
+
+        actions = self.model.get_menu_actions(detail, self._level_gauge_zoomed)
         if not actions:
             return
 
         menu = QMenu()
         menu.setStyleSheet("""
-            QMenu {
-                background-color: white;
-                color: black;
-                border: 1px solid black;
-                padding: 6px;
-            }
-            QMenu::item {
-                padding: 8px 20px;
-                border-radius: 4px;
-            }
-            QMenu::item:selected {
-                background-color: lightblue;
-            }
-            QMenu::separator {
-                height: 1px;
-                background-color: black;
-                margin: 4px 10px;
-            }
-            QMenu::item:disabled {
-                color: black;
-                background-color: transparent;
-            }
+        QMenu {
+            background-color: white;
+            color: black;
+            border: 1px solid black;
+            padding: 6px;
+        }
+        QMenu::item {
+            padding: 8px 20px;
+            border-radius: 4px;
+        }
+        QMenu::item:selected {
+            background-color: lightblue;
+        }
+        QMenu::separator {
+            height: 1px;
+            background-color: black;
+            margin: 4px 10px;
+        }
+        QMenu::item:disabled {
+            color: black;
+            background-color: transparent;
+        }
         """)
+
         info = menu.addAction(f"{detail.name} ({type(detail).__name__})")
         info.setEnabled(False)
         menu.addSeparator()
 
         for label, action in actions:
-            menu.addAction(label, lambda a=action, d=detail: self._menu_action(d, a))
+            if action is None:
+                item = menu.addAction(label)
+                item.setEnabled(False)
+            else:
+                menu.addAction(label, lambda a=action, d=detail: self._menu_action(d, a))
 
         menu.exec(QCursor.pos())
 
     def _menu_action(self, detail, action):
+        if action == "focus_level_gauge":
+            assembly = getattr(detail, "parent_assembly", None)
+            if assembly and not self._level_gauge_zoomed:
+                self.camera.save_current_view()
+                self.camera.focus_on_level_gauge(assembly.bounds)
+                self._level_gauge_zoomed = True
+                self.scene.update()
+                self.panel.set_message("Уровнемер: приближение")
+            return
+
+        if action == "unfocus_level_gauge":
+            if self._level_gauge_zoomed:
+                self.camera.restore_saved_view()
+                self._level_gauge_zoomed = False
+                self.scene.update()
+                self.panel.set_message("Уровнемер: отдаление")
+            return
+
         self.model.execute_action(detail, action)
         self._start_timer()
-        if hasattr(detail, 'state'):
-            self.panel.set_inventory(self.model.get_inventory())
+        self.panel.set_inventory(self.model.get_inventory())
+
+        if action == "remove_level_gauge":
+            self._level_gauge_zoomed = False
 
     # ========================
-    #  КОЛЁСИКО
+    # КОЛЁСИКО
     # ========================
 
     def on_wheel(self, delta):
         self.camera.zoom(0.9 if delta > 0 else 1.1)
 
     # ========================
-    #  КЛАВИАТУРА
+    # КЛАВИАТУРА
     # ========================
 
     def on_key(self, key):
         cam = self.camera
 
         if key in (Qt.Key_1, Qt.Key_2, Qt.Key_3, Qt.Key_4, Qt.Key_5, Qt.Key_6):
-            key_str = {Qt.Key_1: "1", Qt.Key_2: "2", Qt.Key_3: "3",
-                    Qt.Key_4: "4", Qt.Key_5: "5", Qt.Key_6: "6"}[key]
+            key_str = {
+                Qt.Key_1: "1",
+                Qt.Key_2: "2",
+                Qt.Key_3: "3",
+                Qt.Key_4: "4",
+                Qt.Key_5: "5",
+                Qt.Key_6: "6"
+            }[key]
             ps = self.model.particle_systems.get(key_str)
             if ps:
                 if ps._active:
@@ -144,18 +222,22 @@ class Controller(QObject):
                     ps.start()
                     self._start_timer()
                     self.panel.set_message(f"Частицы {key_str}: вкл")
-        elif key == Qt.Key_Up: cam.move(dy=0.3)
-        elif key == Qt.Key_Down: cam.move(dy=-0.3)
-        elif key == Qt.Key_Left: cam.move(dx=-0.3)
-        elif key == Qt.Key_Right: cam.move(dx=0.3)
+        elif key == Qt.Key_Up:
+            cam.move(dy=0.3)
+        elif key == Qt.Key_Down:
+            cam.move(dy=-0.3)
+        elif key == Qt.Key_Left:
+            cam.move(dx=-0.3)
+        elif key == Qt.Key_Right:
+            cam.move(dx=0.3)
 
     # ========================
-    #  ЖЕСТЫ
+    # ЖЕСТЫ
     # ========================
 
     def on_gesture(self, name: str, confidence: float = 1.0):
         detail = self.model.get_highlighted()
-        
+
         if name in ("FIST", "Closed_Fist"):
             if detail and hasattr(detail, 'close') and not detail.has_animation():
                 self.model.execute_action(detail, 'close')
@@ -163,7 +245,7 @@ class Controller(QObject):
                 self.panel.set_message(f"✊ Закрыть: {detail.name}")
             else:
                 self.panel.set_message("✊ Кулак (нет цели)")
-        
+
         elif name in ("OPEN_PALM", "Open_Palm"):
             if detail and hasattr(detail, 'open') and not detail.has_animation():
                 self.model.execute_action(detail, 'open')
@@ -171,41 +253,23 @@ class Controller(QObject):
                 self.panel.set_message(f"✋ Открыть: {detail.name}")
             else:
                 self.panel.set_message("✋ Ладонь (нет цели)")
-        
+
         elif name in ("THUMB_UP", "Thumb_Up"):
-            # Можно назначить на что-то — например, аварийный стоп
             self._emergency_stop()
             self.panel.set_message("👍 Аварийный стоп")
-        
+
         elif name in ("VICTORY", "Victory"):
             self.panel.set_message("✌ Победа (курсор вкл/выкл)")
 
-    # ========================
-    #  АВАРИЙНЫЙ СТОП
-    # ========================
-
-    def _emergency_stop(self):
-        if self.model.particle_systems:
-            for ps in self.model.particle_systems.values():
-                ps.stop()
-        self.panel.set_message("⚠ АВАРИЙНЫЙ СТОП")
-
-
-    def _on_inventory_click(self, name: str):
-        detail = self.model.get_by_name(name)
-        if detail and hasattr(detail, 'attach'):
-            detail.attach()
-            self.model._active.discard(detail)
-            self.panel.set_inventory(self.model.get_inventory())
-            self.panel.set_message(f"{name}: установлен(а)")
-
+        else:
+            self.panel.set_message(f"Жест: {name} ({confidence:.0%})")
 
     def _start_ml_client(self):
         """Запустить поток чтения ML-событий."""
         import threading
         import json
         import socket
-        
+
         def read_events():
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             try:
@@ -225,28 +289,71 @@ class Controller(QObject):
                 print(f"ML client: {e}")
             finally:
                 sock.close()
-        
+
         self._ml_thread = threading.Thread(target=read_events, daemon=True)
         self._ml_thread.start()
 
     def _on_ml_event_main(self, event):
         """Вызывается в главном потоке."""
         contract = event.get("contract", "")
-        
+
         if contract == "oil_gestures.ml.runtime":
             gestures = event.get("gestures", {})
             static = gestures.get("static")
             cursor = event.get("cursor", {})
             enabled = cursor.get("enabled", False)
-            
+
             if enabled:
                 action = cursor.get("action", "NONE")
                 self.panel.set_message(f"🖐️ Курсор: {action}")
             elif static and isinstance(static, dict):
                 name = static.get("name", "—")
                 conf = static.get("confidence", 0)
-                print(f"STATIC: {name} {conf:.2f}")  # ← добавь
+                print(f"STATIC: {name} {conf:.2f}")
                 self.panel.set_message(f"✋ {name} ({conf:.0%})")
                 self.on_gesture(name, conf)
             else:
                 self.panel.set_message("👋 Рука есть")
+
+    # ========================
+    # ИЗМЕРЕНИЕ
+    # ========================
+
+    def _on_measure_complete(self):
+        ui = self.model.level_gauge_ui
+        if ui.current_screen == "measure_level":
+            ui._level_measured = True
+        elif ui.current_screen == "measure_pressure":
+            ui._pressure_measured = True
+        self.model.update_level_gauge_screen()
+        self.scene.update()
+        self.panel.set_message("Уровнемер: измерение завершено")
+
+    # ========================
+    # АВАРИЙНЫЙ СТОП
+    # ========================
+
+    def _emergency_stop(self):
+        for d in self.model.details:
+            if hasattr(d, "attach") and hasattr(d, "state"):
+                d.attach()
+            if hasattr(d, "stop"):
+                d.stop()
+
+        self.model._active.clear()
+
+        if self.model.particle_systems:
+            for ps in self.model.particle_systems.values():
+                ps.stop()
+
+        self._level_gauge_zoomed = False
+        self.panel.set_message("⚠ АВАРИЙНЫЙ СТОП")
+        self.panel.set_inventory(self.model.get_inventory())
+
+    def _on_inventory_click(self, name: str):
+        detail = self.model.get_by_name(name)
+        if detail and hasattr(detail, "attach"):
+            detail.attach()
+            self.model._active.discard(detail)
+            self.panel.set_inventory(self.model.get_inventory())
+            self.panel.set_message(f"{name}: установлен(а)")
