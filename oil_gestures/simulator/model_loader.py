@@ -4,7 +4,7 @@ from oil_gestures.simulator.details_and_particles import Body, Valve, Manometer,
 
 
 Details = {
-    1 :  ("main_body", Body, "white", [11]),
+    1 :  ("Main_body", Body, "white", [11]),
     2 :  ("connections", Body, "darkred", [0]),
     3 :  ("connections1", Body, "silver", [1]),
     4 :  ("connections2", Body, "white", [10]),
