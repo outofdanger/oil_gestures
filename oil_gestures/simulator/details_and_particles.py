@@ -6,10 +6,11 @@ from PySide6.QtGui import QImage, QPainter, QColor, QPen, QFont
 # ========================
 
 class Detail:
-    def __init__(self, mesh, actor, name, color=None):
+    def __init__(self, mesh, actor, name, axis=(0, 1, 0), color=None):
         self.mesh = mesh
         self.actor = actor
         self.name = name
+        self.axis = axis
         self.parent_assembly = None
         self._original_color = actor.GetProperty().GetColor()
         self.highlightable = True
@@ -55,8 +56,8 @@ class Detail:
 # ========================
 
 class Valve(Detail):
-    def __init__(self, mesh, actor, name, color=None):
-        super().__init__(mesh, actor, name)
+    def __init__(self, mesh, actor, name, axis=(0, 1, 0), color=None):
+        super().__init__(mesh, actor, name, axis)
         self._rotating = False
         self._speed = 0
         self._target = 0
@@ -88,7 +89,7 @@ class Valve(Detail):
         self._speed = 0
 
     def _rotate(self, angle):
-        self.mesh.rotate_vector((0, 0, 1), angle, point=self.center, inplace=True)
+        self.mesh.rotate_vector(self.axis, angle, point=self.center, inplace=True)
         self.actor.GetMapper().SetInputData(self.mesh)
 
     def get_menu_actions(self):
@@ -240,8 +241,8 @@ class Flap(Detail):
 # ========================
 
 class Plug(Detail):
-    def __init__(self, mesh, actor, name, color=None):
-        super().__init__(mesh, actor, name)
+    def __init__(self, mesh, actor, name, axis=(0, 1, 0), color=None):
+        super().__init__(mesh, actor, name, axis)
         self.state = "attached"
 
     def remove(self):
@@ -270,8 +271,8 @@ class Plug(Detail):
 # ========================
 
 class Manometer(Detail):
-    def __init__(self, mesh, actor, name, color=None):
-        super().__init__(mesh, actor, name)
+    def __init__(self, mesh, actor, name, axis=(0, 1, 0), color=None):
+        super().__init__(mesh, actor, name, axis)
         self._gauge_face = None
         self._gauge_arrow = None
         self._arrow_mesh = None
@@ -281,8 +282,8 @@ class Manometer(Detail):
 
     def create_gauge(self, plotter):
         center = self.mesh.center
-        pos = (center[0], center[1], center[2] + 0.039)
-        size = 0.31
+        pos = (center[0], center[1], center[2] + 0.054)
+        size = 0.43
 
         plane = pv.Plane(center=pos, direction=(0, 0, 1), i_size=size, j_size=size)
         try:
@@ -297,8 +298,8 @@ class Manometer(Detail):
             (pos[0] + 0.003, pos[1], pos[2] + 0.005),
             (pos[0] + size * 0.43, pos[1], pos[2] + 0.005)
         )
-        arrow = line.tube(radius=0.0028)
-        tip = pv.Sphere(radius=0.011, center=(pos[0], pos[1], pos[2]))
+        arrow = line.tube(radius=0.0036)
+        tip = pv.Sphere(radius=0.015, center=(pos[0], pos[1], pos[2]))
         arrow = arrow.merge(tip)
         self._gauge_arrow = plotter.add_mesh(arrow, color="red")
         self._arrow_mesh = arrow
@@ -370,8 +371,8 @@ class Manometer(Detail):
 # ========================
 
 class Body(Detail):
-    def __init__(self, mesh, actor, name, color=None):
-        super().__init__(mesh, actor, name)
+    def __init__(self, mesh, actor, name, axis=(0, 1, 0), color=None):
+        super().__init__(mesh, actor, name, axis)
         self.highlightable = False
 
 class LevelGaugeScreen(Detail):

@@ -1,40 +1,42 @@
 import pyvista as pv
 
 from oil_gestures.simulator.details_and_particles import Body, Valve, Manometer, Plug, Flap, LevelGaugeAssembly, LevelGaugeScreen, ParticleSystem
+
 DETAILS = {
-    1: ("main_body", Body, "white", [11]),
-    2: ("connections", Body, "darkred", [0]),
-    3: ("connections1", Body, "silver", [1]),
-    4: ("connections2", Body, "white", [10]),
-    5: ("valve_1", Valve, "red", [2]),
-    6: ("valve_2", Valve, "red", [3]),
-    7: ("valve_3", Valve, "red", [4]),
-    8: ("valve_4", Valve, "red", [5]),
-    9: ("valve_5", Valve, "red", [6]),
-    10: ("valve_11", Valve, "red", [8]),
-    11: ("valve_12", Valve, "red", [12]),
-    12: ("valve_13", Valve, "red", [14]),
-    13: ("valve_14", Valve, "red", [16]),
-    14: ("valve_15", Valve, "red", [18]),
-    15: ("manometer_1", Manometer, "black", [9]),
-    16: ("manometer_2", Manometer, "black", [13]),
-    17: ("manometer_3", Manometer, "black", [15]),
-    18: ("manometer_4", Manometer, "black", [17]),
-    19: ("plug", Plug, "red", [7]),
+    1: ("main_body", Body, "white", [11], (0, 1, 0), 1.0),
+    2: ("connections", Body, "darkred", [0], (0, 1, 0), 1.0),
+    3: ("connections1", Body, "silver", [1], (0, 1, 0), 1.0),
+    4: ("connections2", Body, "white", [10], (0, 1, 0), 1.0),
+    5: ("valve_1", Valve, "red", [2], (0, 0, 1), 1.0),
+    6: ("valve_2", Valve, "red", [3], (0, 0, 1), 1.0),
+    7: ("valve_3", Valve, "red", [4], (0, 0, 1), 1.0),
+    8: ("valve_4", Valve, "red", [5], (0, 0, 1), 1.0),
+    9: ("valve_5", Valve, "red", [6], (0, 0, 1), 1.0),
+    10: ("valve_11", Valve, "red", [8], (0, 0, 1), 1.1),
+    11: ("valve_12", Valve, "red", [12], (0, 0, 1), 1.1),
+    12: ("valve_13", Valve, "red", [14], (0, 0, 1), 1.1),
+    13: ("valve_14", Valve, "red", [16], (0, 0, 1), 1.1),
+    14: ("valve_15", Valve, "red", [18], (0, 1, 0), 1.3),
+    15: ("manometer_1", Manometer, "black", [9], (0, 0, 1), 1.4),
+    16: ("manometer_2", Manometer, "black", [13], (0, 0, 1), 1.4),
+    17: ("manometer_3", Manometer, "black", [15], (0, 0, 1), 1.4),
+    18: ("manometer_4", Manometer, "black", [17], (0, 0, 1), 1.4),
+    19: ("plug", Plug, "red", [7], (1, 0, 0), 1.1),
 }
 
 CONTROLLER_CONFIG = {
     "file": "assets/controller.glb",
+    "scale": 1.53,
     "part_index": 21,
     "name": "controller",
     "color": "silver",
-    "offset": (8.0, -1.87, 0.0),
+    "offset": (9.0, -0.78, -4.0),
     "rotation_y": -31.0,
 }
 
 LEVEL_GAUGE_CONFIG = {
     "file": "assets/level_gauge.glb",
-    "scale": 0.42,
+    "scale": 0.44,
     "rotation_y": 0.0,
     "mount_to": "plug",
     "mount_gap": 0.00,
@@ -70,10 +72,10 @@ def find_detail(details, name):
     return None
 
 
-def add_detail(plotter, details, mesh, cls, name, color):
+def add_detail(plotter, details, mesh, cls, name, color, axis=(0, 1, 0)):
     actor = plotter.add_mesh(mesh, color=color, show_edges=False)
     actor_color = actor.GetProperty().GetColor()
-    detail = cls(mesh, actor, name, actor_color)
+    detail = cls(mesh, actor, name, axis, actor_color)
     details.append(detail)
     return detail
 
@@ -109,7 +111,7 @@ def load_main_installation(plotter, filepath, details):
     base_offset = build_base_offset(parts)
 
     for key in sorted(DETAILS.keys()):
-        name, cls, color, indices = DETAILS[key]
+        name, cls, color, indices, axis, scale = DETAILS[key]
         elements = [parts[i].copy() for i in indices]
 
         if len(elements) > 1:
@@ -117,8 +119,13 @@ def load_main_installation(plotter, filepath, details):
         else:
             obj = elements[0]
 
+        if scale != 1.0:
+            center = obj.center
+            obj.scale([scale, scale, scale], inplace=True)
+            new_center = obj.center
+            obj.translate([center[0]-new_center[0], center[1]-new_center[1], center[2]-new_center[2]], inplace=True)
         obj.translate(base_offset, inplace=True)
-        add_detail(plotter, details, obj, cls, name, color)
+        add_detail(plotter, details, obj, cls, name, color, axis)
 
     return base_offset
 
@@ -136,6 +143,13 @@ def load_controller(plotter, details, base_offset):
         base_offset[1] + dy,
         base_offset[2] + dz,
     ]
+
+    scale = CONTROLLER_CONFIG["scale"]
+    if scale != 1.0:
+        center = obj.center
+        obj.scale([scale, scale, scale], inplace=True)
+        new_center = obj.center
+        obj.translate([center[0]-new_center[0], center[1]-new_center[1], center[2]-new_center[2]], inplace=True)
 
     obj.translate(controller_offset, inplace=True)
 
