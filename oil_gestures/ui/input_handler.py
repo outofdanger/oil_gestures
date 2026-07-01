@@ -95,7 +95,8 @@ class InputHandler(QObject):
 
         elif btn == Qt.RightButton:
             if self._mouse_pressed and not self._mouse_has_moved:
-                self.controller.on_right_click()
+                actor = self._pick(event)
+                self.controller.on_right_click(actor)
 
             self._mouse_pressed = False
             self._mouse_button = None

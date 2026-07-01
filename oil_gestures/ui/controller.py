@@ -175,10 +175,12 @@ class Controller(QObject):
 
             self.scene.update()
             return
-    def on_right_click(self):
-        detail = self.model.get_highlighted()
+    def on_right_click(self, actor=None):
+        detail = self.model.get_by_actor(actor) if actor is not None else None
         if detail is None:
             return
+
+        self.model.highlight(detail)
 
         actions = self.model.get_menu_actions(detail, self._level_gauge_zoomed)
         if not actions:

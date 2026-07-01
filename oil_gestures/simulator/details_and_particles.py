@@ -706,6 +706,9 @@ class ParticleSystem:
                 self._velocities[i] = dir_rotated * speed
                 self._lifetimes[i] = np.random.uniform(self._lifetime_min, self._lifetime_max)
             else:
+                if self._type != self.AIR_BLAST and np.linalg.norm(self._velocities[i]) < 1e-9:
+                    self._lifetimes[i] -= dt
+                    continue
                 self._velocities[i] += self._gravity * dt
                 self._positions[i] += self._velocities[i] * dt
                 self._lifetimes[i] -= dt
