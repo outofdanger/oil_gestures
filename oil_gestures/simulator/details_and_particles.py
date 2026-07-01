@@ -50,7 +50,9 @@ class Detail:
     def bounds(self):
         return self.mesh.bounds
 
-
+    def set_color(self, color):
+        rgb = pv.Color(color).float_rgb
+        self.actor.GetProperty().SetColor(*rgb)
 # ========================
 # ВЕНТИЛЬ
 # ========================
@@ -504,6 +506,12 @@ class LevelGaugeScreen(Detail):
         super().hide()
         if self._screen_plane_actor:
             self._screen_plane_actor.VisibilityOff()
+
+class ControllerScreen(LevelGaugeScreen):
+    def __init__(self, mesh, actor, name, plotter, color=None):
+        super().__init__(mesh, actor, name, plotter, color)
+        self.render_lines(["КОНТРОЛЛЕР", "ПИТАНИЕ: ВЫКЛ"])
+
 # ========================
 # СБОРКА УРОВНЕМЕРА
 # ========================
@@ -722,3 +730,133 @@ class ParticleSystem:
         cos_a = np.cos(angle)
         sin_a = np.sin(angle)
         return v * cos_a + np.cross(axis, v) * sin_a + axis * np.dot(axis, v) * (1 - cos_a)
+
+class ControllerDoor(Detail):
+    def __init__(self, mesh, actor, name, color=None, hinge_point=None):
+        super().__init__(mesh, actor, name, color)
+        self._angle = 0.0
+        self._target_angle = 0.0
+        self._speed = 120.0
+        self._animating = False
+        self._opened = True
+
+        b = self.mesh.bounds
+        self._hinge_point = hinge_point or (
+            b[1],
+            (b[2] + b[3]) / 2,
+            (b[4] + b[5]) / 2,
+        )
+        self._axis = (0, 1, 0)
+
+    def open(self):
+        self._target_angle = 0.0
+        self._opened = True
+        self._animating = True
+
+    def close(self):
+        self._target_angle = 90.0
+        self._opened = False
+        self._animating = True
+
+    def get_menu_actions(self):
+        if self._opened:
+            return [("Закрыть дверцу", "close")]
+        return [("Открыть дверцу", "open")]
+
+    def execute_action(self, action):
+        if action == "open":
+            self.open()
+        elif action == "close":
+            self.close()
+
+    def has_animation(self):
+        return self._animating
+
+    def tick_animation(self, dt):
+        if not self._animating:
+            return
+
+        delta = self._target_angle - self._angle
+
+        if abs(delta) < 0.5:
+            self._rotate_to(self._target_angle)
+            self._animating = False
+            return
+
+        step = self._speed * dt
+        if delta < 0:
+            step = -step
+
+        if abs(step) > abs(delta):
+            step = delta
+
+        self.mesh.rotate_vector(self._axis, step, point=self._hinge_point, inplace=True)
+        self.actor.GetMapper().SetInputData(self.mesh)
+        self._angle += step
+
+    def _rotate_to(self, target_angle):
+        delta = target_angle - self._angle
+        if abs(delta) < 1e-6:
+            return
+        self.mesh.rotate_vector(self._axis, delta, point=self._hinge_point, inplace=True)
+        self.actor.GetMapper().SetInputData(self.mesh)
+        self._angle = target_angle
+
+class ControllerLever(Detail):
+    def __init__(self, mesh, actor, name, color=None, pivot_point=None):
+        super().__init__(mesh, actor, name, color)
+        self._angle = 0.0
+        self._target_angle = 0.0
+        self._speed = 160.0
+        self._animating = False
+        self._on = False
+
+        b = self.mesh.bounds
+        self._pivot_point = pivot_point or (
+            (b[0] + b[1]) / 2,
+            b[2],
+            (b[4] + b[5]) / 2,
+        )
+
+        # Начни с этой оси; если будет крутиться не туда, см. ниже
+        self._axis = (1, 0, 0)
+
+    def toggle(self):
+        self._on = not self._on
+        self._target_angle = 90.0 if self._on else 0.0
+        self._animating = True
+
+    def execute_action(self, action):
+        if action == "toggle":
+            self.toggle()
+
+    def has_animation(self):
+        return self._animating
+
+    def tick_animation(self, dt):
+        if not self._animating:
+            return
+
+        delta = self._target_angle - self._angle
+        if abs(delta) < 0.5:
+            self._rotate_to(self._target_angle)
+            self._animating = False
+            return
+
+        step = self._speed * dt
+        if delta < 0:
+            step = -step
+        if abs(step) > abs(delta):
+            step = delta
+
+        self.mesh.rotate_vector(self._axis, step, point=self._pivot_point, inplace=True)
+        self.actor.GetMapper().SetInputData(self.mesh)
+        self._angle += step
+
+    def _rotate_to(self, target_angle):
+        delta = target_angle - self._angle
+        if abs(delta) < 1e-6:
+            return
+        self.mesh.rotate_vector(self._axis, delta, point=self._pivot_point, inplace=True)
+        self.actor.GetMapper().SetInputData(self.mesh)
+        self._angle = target_angle

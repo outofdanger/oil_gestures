@@ -1,6 +1,6 @@
 import pyvista as pv
 
-from oil_gestures.simulator.details_and_particles import Body, Valve, Manometer, Plug, Flap, LevelGaugeAssembly, LevelGaugeScreen, ParticleSystem
+from oil_gestures.simulator.details_and_particles import Body, Valve, Manometer, Plug, Flap, LevelGaugeAssembly, LevelGaugeScreen, ParticleSystem, ControllerDoor, ControllerScreen, ControllerLever
 
 DETAILS = {
     1: ("main_body", Body, "white", [11], (0, 1, 0), 1.0),
@@ -26,12 +26,33 @@ DETAILS = {
 
 CONTROLLER_CONFIG = {
     "file": "assets/controller.glb",
-    "scale": 1.53,
-    "part_index": 21,
-    "name": "controller",
-    "color": "silver",
-    "offset": (9.0, -0.78, -4.0),
-    "rotation_y": -31.0,
+    "offset": (8.0, -1, 0.0),
+    "rotation_y": 0.0,
+    "parts": {
+        0: ("controller_door", "#8a7a45"),
+        1: ("controller_screen", "#1d2a1d"),
+        2: ("controller_panel", "#3a3a3a"),
+        3: ("controller_circle_one", "silver"),
+        4: ("controller_circle_two", "silver"),
+        5: ("controller_circle_three", "silver"),
+        6: ("controller_circle_four", "silver"),
+        7: ("controller_circle_five", "silver"),
+        8: ("controller_start_button", "green"),
+        9: ("controller_stop_button", "red"),
+        10: ("controller_button_one", "silver"),
+        11: ("controller_button_two", "silver"),
+        12: ("controller_button_lower", "silver"),
+        13: ("controller_button_top", "silver"),
+        14: ("controller_button_left", "silver"),
+        15: ("controller_button_center", "silver"),
+        16: ("controller_button_right", "silver"),
+        17: ("controller_button_long", "silver"),
+        18: ("controller_black_wheel", "black"),
+        19: ("controller_big_button", "yellow"),
+        20: ("controller_base_small", "darkgray"),
+        21: ("controller_body", "silver"),
+        22: ("controller_lever_on_off", "darkgray"),
+    },
 }
 
 LEVEL_GAUGE_CONFIG = {
@@ -135,8 +156,20 @@ def load_controller(plotter, details, base_offset):
     parts = extract_all_meshes(blocks)
     print("controller parts:", len(parts))
 
-    obj = parts[CONTROLLER_CONFIG["part_index"]].copy()
+    prepared_parts = []
 
+    for index, (name, color) in CONTROLLER_CONFIG["parts"].items():
+        mesh = parts[index].copy()
+        prepared_parts.append({
+            "mesh": mesh,
+            "name": name,
+            "color": color,
+        })
+
+    all_bounds = merge_bounds([p["mesh"] for p in prepared_parts])
+    center = bounds_center(all_bounds)
+
+    rotation_y = CONTROLLER_CONFIG["rotation_y"]
     dx, dy, dz = CONTROLLER_CONFIG["offset"]
     controller_offset = [
         base_offset[0] + dx,
@@ -144,26 +177,62 @@ def load_controller(plotter, details, base_offset):
         base_offset[2] + dz,
     ]
 
-    scale = CONTROLLER_CONFIG["scale"]
-    if scale != 1.0:
-        center = obj.center
-        obj.scale([scale, scale, scale], inplace=True)
-        new_center = obj.center
-        obj.translate([center[0]-new_center[0], center[1]-new_center[1], center[2]-new_center[2]], inplace=True)
+    for part in prepared_parts:
+        mesh = part["mesh"]
+        name = part["name"]
+        color = part["color"]
 
-    obj.translate(controller_offset, inplace=True)
+        mesh.rotate_vector((0, 1, 0), rotation_y, point=center, inplace=True)
+        mesh.translate(controller_offset, inplace=True)
 
-    center = obj.center
-    obj.rotate_vector((0, 1, 0), CONTROLLER_CONFIG["rotation_y"], point=center, inplace=True)
+        actor = plotter.add_mesh(mesh, color=color, show_edges=False)
+        actor_color = actor.GetProperty().GetColor()
 
-    add_detail(
-        plotter,
-        details,
-        obj,
-        Body,
-        CONTROLLER_CONFIG["name"],
-        CONTROLLER_CONFIG["color"],
-    )
+        if name == "controller_door":
+            b = mesh.bounds
+            hinge_point = (b[0], (b[2] + b[3]), b[4])
+
+            detail = ControllerDoor(
+                mesh,
+                actor,
+                name,
+                actor_color,
+                hinge_point=hinge_point,
+            )
+
+        elif name == "controller_screen":
+            detail = ControllerScreen(mesh, actor, name, plotter, actor_color)
+
+        elif name == "controller_lever_on_off":
+            b = mesh.bounds
+            pivot_point = (
+                (b[0] + b[1]) / 2,
+                b[2],
+                (b[4] + b[5]) / 2,
+            )
+            detail = ControllerLever(
+                mesh,
+                actor,
+                name,
+                actor_color,
+                pivot_point=pivot_point,
+            )
+
+        else:
+            detail = Body(mesh, actor, name, actor_color)
+            detail.highlightable = name not in {
+                "controller_body",
+                "controller_base_small",
+                "controller_screen",
+                "controller_panel",
+                "controller_circle_one",
+                "controller_circle_two",
+                "controller_circle_three",
+                "controller_circle_four",
+                "controller_circle_five",
+            }
+
+        details.append(detail)
 
 
 def load_level_gauge(plotter, details):

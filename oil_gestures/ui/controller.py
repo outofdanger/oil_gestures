@@ -116,6 +116,65 @@ class Controller(QObject):
             self.panel.set_message("Уровнемер: главный экран")
             return
 
+        if detail.name == "controller_lever_on_off":
+            self.model.controller_ui.toggle_power()
+            self.model.execute_action(detail, "toggle")
+            self._start_timer()
+            self.model.update_controller_screen()
+
+            power = self.model.controller_ui.power_on
+
+            power_indicator = self.model.get_by_name("controller_circle_five")
+            if power_indicator:
+                power_indicator.set_color("green" if power else "silver")
+
+            self.scene.update()
+            self.panel.set_message(
+                "Контроллер: питание включено" if power else "Контроллер: питание выключено"
+            )
+            return
+
+        if detail.name == "controller_start_button":
+            started = self.model.controller_ui.press_start()
+            self.model.update_controller_screen()
+
+            if started:
+                unwork_indicator = self.model.get_by_name("controller_circle_one")
+                work_indicator = self.model.get_by_name("controller_circle_three")
+                if work_indicator:
+                    work_indicator.set_color("green")
+                if unwork_indicator:
+                    unwork_indicator.set_color("silver")
+
+                self._flash_detail("controller_circle_two", "yellow", 3000)
+                self.panel.set_message("Контроллер: пуск")
+            else:
+                self._flash_detail("controller_circle_five", "red", 1000)
+                self.panel.set_message("Нет питания")
+
+            self.scene.update()
+            return
+
+        if detail.name == "controller_stop_button":
+            stopped = self.model.controller_ui.press_stop()
+            self.model.update_controller_screen()
+
+            if stopped:
+                work_indicator = self.model.get_by_name("controller_circle_three")
+                stop_indicator = self.model.get_by_name("controller_circle_one")
+                if work_indicator:
+                    work_indicator.set_color("silver")
+                if stop_indicator:
+                    stop_indicator.set_color("red")
+
+                self._flash_detail("controller_circle_two", "yellow", 3000)
+                self.panel.set_message("Контроллер: стоп")
+            else:
+                self._flash_detail("controller_circle_five", "red", 1000)
+                self.panel.set_message("Нет питания")
+
+            self.scene.update()
+            return
     def on_right_click(self):
         detail = self.model.get_highlighted()
         if detail is None:
@@ -357,3 +416,21 @@ class Controller(QObject):
             self.model._active.discard(detail)
             self.panel.set_inventory(self.model.get_inventory())
             self.panel.set_message(f"{name}: установлен(а)")
+
+    # А это зона того, что добавил Влад
+
+    def _flash_detail(self, detail_name, color, duration_ms=3000):
+        detail = self.model.get_by_name(detail_name)
+        if detail is None:
+            return
+
+        original_color = detail._original_color
+        detail.set_color(color)
+        self.scene.update()
+
+        def restore_color():
+            detail.actor.GetProperty().SetColor(*original_color)
+            detail._original_color = original_color
+            self.scene.update()
+
+        QTimer.singleShot(duration_ms, restore_color)

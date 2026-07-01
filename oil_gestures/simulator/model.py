@@ -1,7 +1,7 @@
 from oil_gestures.simulator.model_loader import load_model
 from oil_gestures.simulator.details_and_particles import ParticleSystem, Manometer
 from oil_gestures.simulator.level_gauge_ui import LevelGaugeUIState
-
+from oil_gestures.simulator.controller_ui import ControllerUIState
 class Model:
     def __init__(self, plotter, filepath):
         self.plotter = plotter
@@ -11,7 +11,8 @@ class Model:
         self._highlighted = None
         self.level_gauge_ui = LevelGaugeUIState()
         self.level_gauge_screen = None
-
+        self.controller_ui = ControllerUIState()
+        self.controller_screen = None
         for d in self.details:
             if isinstance(d, Manometer):
                 d.create_gauge(plotter)
@@ -21,8 +22,16 @@ class Model:
                 self.level_gauge_screen = d
                 break
 
+        for d in self.details:
+            if getattr(d, "name", None) == "controller_screen":
+                self.controller_screen = d
+                break
+
         if self.level_gauge_screen is not None:
             self.level_gauge_screen.render_lines(self.level_gauge_ui.get_lines())
+
+        if self.controller_screen is not None:
+            self.controller_screen.render_lines(self.controller_ui.get_lines())
 
         self.particle_systems["1"] = ParticleSystem(
             plotter,
@@ -183,3 +192,7 @@ class Model:
             assembly = getattr(self.level_gauge_screen, "parent_assembly", None)
             if assembly and assembly.state == "attached":
                 self.level_gauge_screen.render_lines(self.level_gauge_ui.get_lines())
+
+    def update_controller_screen(self):
+        if self.controller_screen is not None:
+            self.controller_screen.render_lines(self.controller_ui.get_lines())
