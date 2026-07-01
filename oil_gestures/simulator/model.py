@@ -26,42 +26,42 @@ class Model:
 
         self.particle_systems["1"] = ParticleSystem(
             plotter,
-            position=(-0.6, 7.9, -0.11),
+            position=(-0.6, 7, -0.11),
             direction=(0, 1, 0),
             particle_type=ParticleSystem.OIL
         )
 
         self.particle_systems["2"] = ParticleSystem(
             plotter,
-            position=(2.17, 6.44, -0.11),
+            position=(2.17, 5.54, -0.12),
             direction=(0, 1, 0),
             particle_type=ParticleSystem.OIL
         )
 
         self.particle_systems["3"] = ParticleSystem(
             plotter,
-            position=(4.65, 3.92, -0.11),
+            position=(4.66, 3.02, -0.11),
             direction=(0, -1, 0),
             particle_type=ParticleSystem.OIL
         )
 
         self.particle_systems["4"] = ParticleSystem(
             plotter,
-            position=(-3.93, 3.59, -0.11),
+            position=(-3.93, 2.69, -0.11),
             direction=(0, 1, 0),
             particle_type=ParticleSystem.GAS
         )
 
         self.particle_systems["5"] = ParticleSystem(
             plotter,
-            position=(-4.11, 2.97, -0.11),
+            position=(-4.11, 2.1, -0.11),
             direction=(-1, 0, 0),
             particle_type=ParticleSystem.GAS
         )
 
         self.particle_systems["6"] = ParticleSystem(
             plotter,
-            position=(-1.82, 1.99, -0.11),
+            position=(-1.82, 1.1, -0.12),
             direction=(-1, 0, 0),
             particle_type=ParticleSystem.GAS
         )

@@ -596,8 +596,8 @@ class ParticleSystem:
         self._type = particle_type
         self._count = count
         self._active = False
-        self._base_point_size = 7.0
-        self._min_point_size = 7.0
+        self._base_point_size = 8.0
+        self._min_point_size = 6.0
         self._max_point_size = 18.0
         self._reference_distance = None
 
