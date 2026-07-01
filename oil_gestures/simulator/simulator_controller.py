@@ -196,8 +196,8 @@ class SimulatorController:
             self._apply_pointing_index(result)
             return result
 
-        if gesture_name in (GestureName.SWIPE_LEFT, GestureName.SWIPE_RIGHT):
-            self._apply_swipe(gesture_name, result)
+        if gesture_name == GestureName.SWIPE_LEFT:
+            self._apply_swipe(result)
             return result
 
         label = NOT_IMPLEMENTED_LABELS.get(gesture_name)
@@ -216,11 +216,13 @@ class SimulatorController:
         result.action_taken = True
         result.message = f"👉 Меню: {detail.name}"
 
-    def _apply_swipe(self, gesture_name: GestureName, result: GestureEventResult) -> None:
-        if gesture_name == GestureName.SWIPE_LEFT:
-            self.model.highlight_previous()
-        else:
-            self.model.highlight_next()
+    def _apply_swipe(self, result: GestureEventResult) -> None:
+        # Single-direction cycling: only SWIPE_LEFT is used (SWIPE_RIGHT is
+        # dropped upstream in gestures.dynamic.model_loader._DISABLED_LABELS,
+        # because a swipe's return stroke reads as the opposite swipe). One
+        # swipe steps forward and wraps last -> first, so every element is
+        # still reachable without a reverse direction to jitter against.
+        self.model.highlight_next()
         # Selection changed - any menu armed for the previous detail is stale,
         # so drop the arming AND ask the UI to close that now-orphaned menu
         # (harmless if none is open - the Qt layer guards on that).
@@ -229,8 +231,7 @@ class SimulatorController:
         result.action_taken = True
 
         detail = self.model.get_highlighted()
-        arrow = "👈" if gesture_name == GestureName.SWIPE_LEFT else "👉"
-        result.message = f"{arrow} Выбрано: {detail.name}" if detail else f"{arrow} Нет деталей"
+        result.message = f"👉 Выбрано: {detail.name}" if detail else "👉 Нет деталей"
 
     def _format_generic(self, name: str | None, confidence) -> str:
         try:

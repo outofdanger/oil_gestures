@@ -30,10 +30,19 @@ _BASELINE_LABEL = GestureName.IDLE.value
 # Continuous gestures: their value matters every frame for as long as they are
 # held (ROTATE turns pressure up/down continuously), so they must keep emitting
 # and are exempt from the discrete-gesture refractory below. Everything else
-# (SWIPE_*, POINTING_INDEX, SQUEEZE, RELEASE) is a one-shot discrete action.
+# (SWIPE_LEFT, POINTING_INDEX, SQUEEZE, RELEASE) is a one-shot discrete action.
 _CONTINUOUS_LABELS: frozenset[str] = frozenset(
     {GestureName.ROTATE_CLOCKWISE.value, GestureName.ROTATE_COUNTERCLOCKWISE.value}
 )
+
+# Recognized but intentionally NOT emitted as actions. SWIPE_RIGHT is dropped
+# here (upstream of the decision layer, so it can't even consume its cooldown)
+# because the *return stroke* of a SWIPE_LEFT is itself recognized as a
+# SWIPE_RIGHT - keeping both directions caused back-and-forth selection jumps.
+# Element cycling is now one-directional (SWIPE_LEFT steps forward and wraps
+# last -> first), which still reaches every element. Empty this set to bring
+# reverse swipes back.
+_DISABLED_LABELS: frozenset[str] = frozenset({GestureName.SWIPE_RIGHT.value})
 
 
 class _BiLSTMGestureClassifier(nn.Module):
@@ -375,9 +384,15 @@ class EnsembleDynamicGestureModel:
         if label is None:
             # Hand at rest / no confident gesture: re-arm so the next discrete
             # gesture can fire. This is the boundary that ends one swipe's
-            # refractory window (the return stroke never reaches here - it is
-            # a confident OPPOSITE swipe, suppressed below).
+            # refractory window.
             self._ready_to_fire = True
+            return None
+
+        if label in _DISABLED_LABELS:
+            # Recognized but disabled (e.g. SWIPE_RIGHT). Drop it WITHOUT
+            # touching the refractory - a disabled gesture is neither a fire
+            # nor a rest, so a SWIPE_LEFT's return stroke can't re-arm us and
+            # then sneak a reverse step through.
             return None
 
         try:

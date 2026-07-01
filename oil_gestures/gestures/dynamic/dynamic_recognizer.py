@@ -26,6 +26,10 @@ class DynamicRecognizerConfig:
     # POINTING_INDEX). Rate-limits stepping through elements; does not affect
     # recognition quality or the continuous ROTATE gestures.
     swipe_cooldown_seconds: float = 0.6
+    # Torch device for the ensemble. "auto" uses CUDA when torch reports it
+    # available, else CPU. "cuda"/"cpu" force it. The models and their per-frame
+    # inputs are moved to this device in gestures.dynamic.model_loader.
+    device: str = "auto"
     # Checkpoint pair loaded by load_dynamic_model() in
     # gestures.dynamic.model_loader, which runs the "ST-GCN leads + BiLSTM
     # confirms" ensemble (validated live in

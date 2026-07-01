@@ -115,6 +115,11 @@ class CursorConfig:
     max_speed_points_per_second: float = DEFAULT_CURSOR_MAX_SPEED_POINTS_PER_SECOND
     reacquire_frames: int = DEFAULT_CURSOR_REACQUIRE_FRAMES
     lost_reset_seconds: float = DEFAULT_CURSOR_LOST_RESET_SECONDS
+    # Movement gain while a grab (GRAB / held left button) is active. 1.0 keeps
+    # the normal absolute mapping; < 1.0 makes the cursor travel less for the
+    # same hand motion during a drag (precise positioning). Only affects grab -
+    # ordinary cursor movement is untouched.
+    grab_sensitivity: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -300,6 +305,7 @@ def load_config(config_dir: str | Path | None = None) -> OilGesturesConfig:
                 dynamic_section.get("swipe_cooldown_seconds"),
                 dynamic_defaults.swipe_cooldown_seconds,
             ),
+            device=str(dynamic_section.get("device", dynamic_defaults.device)),
             stgcn_checkpoint_path=(
                 dynamic_defaults.stgcn_checkpoint_path
                 if "stgcn_checkpoint_path" not in dynamic_section
@@ -344,6 +350,10 @@ def load_config(config_dir: str | Path | None = None) -> OilGesturesConfig:
             lost_reset_seconds=_as_float(
                 cursor_section.get("lost_reset_seconds"),
                 cursor_defaults.lost_reset_seconds,
+            ),
+            grab_sensitivity=_as_float(
+                cursor_section.get("grab_sensitivity"),
+                cursor_defaults.grab_sensitivity,
             ),
         ),
         cursor_gestures=CursorGestureConfig(

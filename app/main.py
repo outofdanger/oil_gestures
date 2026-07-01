@@ -125,6 +125,7 @@ def build_cursor_pipeline(config: OilGesturesConfig) -> CursorPipeline:
         lost_reset_seconds=config.cursor.lost_reset_seconds,
         action_cooldown_seconds=config.cursor_actions.cooldown_seconds,
         enabled=config.cursor.enabled,
+        grab_sensitivity=config.cursor.grab_sensitivity,
     )
 
 
@@ -189,6 +190,7 @@ def run(
                 bilstm_checkpoint_path=config.dynamic.bilstm_checkpoint_path,
                 min_confidence=config.dynamic.min_confidence,
                 veto_floor=config.dynamic.veto_floor,
+                device=config.dynamic.device,
             )
         )
         if config.dynamic.stgcn_checkpoint_path and config.dynamic.bilstm_checkpoint_path
