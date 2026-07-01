@@ -21,7 +21,7 @@ DETAILS = {
     16: ("manometer_2", Manometer, "black", [13], (0, 0, 1), 1.4),
     17: ("manometer_3", Manometer, "black", [15], (0, 0, 1), 1.4),
     18: ("manometer_4", Manometer, "black", [17], (0, 0, 1), 1.4),
-    19: ("plug", Plug, "red", [7], (1, 0, 0), 1.1),
+    19: ("plug", Plug, "red", [7], (1, 0, 0), 1),
 }
 
 CONTROLLER_CONFIG = {

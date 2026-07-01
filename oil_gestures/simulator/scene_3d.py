@@ -25,10 +25,10 @@ class Scene3D(QWidget):
 
         self.plotter.background_color = "white"
         self.plotter.view_xy()
-        self.plotter.camera.zoom(2.2)
+        self.plotter.camera.zoom(2.5)
         pos, focus, viewup = self.plotter.camera_position
-        new_pos = (pos[0], pos[1] + 6, pos[2])  
-        new_focus = (focus[0], focus[1] + 6, focus[2])
+        new_pos = (pos[0], pos[1] + 4, pos[2])
+        new_focus = (focus[0], focus[1] + 4, focus[2])
         self.plotter.camera_position = [new_pos, new_focus, (0, 1, 0)]
 
     def update(self):
