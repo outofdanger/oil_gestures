@@ -28,6 +28,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.scene, 8)
 
         camera = Camera(self.scene.plotter)
+        camera.save_default()
         model = Model(self.scene.plotter, "assets/model.glb")
 
         self.panel = ControlPanel()

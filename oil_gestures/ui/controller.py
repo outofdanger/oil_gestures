@@ -400,6 +400,13 @@ class Controller(QObject):
             cam.move(dx=-0.3)
         elif key == Qt.Key_Right:
             cam.move(dx=0.3)
+        elif key == Qt.Key_Escape:
+            cam.reset()
+            self._level_gauge_zoomed = False
+            self._controller_zoomed = False
+            self._manometer_zoomed = False
+            self.scene.update()
+            self.panel.set_message("Исходный вид")
 
     # ========================
     # ЖЕСТЫ
@@ -542,6 +549,7 @@ class Controller(QObject):
         ⌨️ Клавиши:
         • 1-4 — ракурсы камеры
         • R — сброс камеры
+        • Esc — возврат к исходному виду
         • Стрелки — движение камеры
         • 1-6 — вкл/выкл частицы
         
