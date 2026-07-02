@@ -28,6 +28,7 @@ class Controller(QObject):
 
         self._level_gauge_zoomed = False
         self._controller_zoomed = False
+        self._manometer_zoomed = False
 
         self.panel.emergency_clicked.connect(self._emergency_stop)
         self.panel.inventory_item_clicked.connect(self._on_inventory_click)
@@ -197,6 +198,7 @@ class Controller(QObject):
             detail,
             self._level_gauge_zoomed,
             self._controller_zoomed,
+            self._manometer_zoomed
         )
         if not actions:
             return
@@ -255,6 +257,7 @@ class Controller(QObject):
             if self._level_gauge_zoomed:
                 self.camera.restore_saved_view()
                 self._level_gauge_zoomed = False
+                self._manometer_zoomed = False
                 self.scene.update()
                 self.panel.set_message("Уровнемер: отдаление")
             return
@@ -274,6 +277,23 @@ class Controller(QObject):
                 self._controller_zoomed = False
                 self.scene.update()
                 self.panel.set_message("Контроллер: отдаление")
+            return
+
+        if action == "focus_manometer":
+            if not self._manometer_zoomed:
+                self.camera.save_current_view()
+                self.camera.focus_on_manometer(detail.bounds)
+                self._manometer_zoomed = True
+                self.scene.update()
+                self.panel.set_message("Манометр: приближение")
+            return
+
+        if action == "unfocus_manometer":
+            if self._manometer_zoomed:
+                self.camera.restore_saved_view()
+                self._manometer_zoomed = False
+                self.scene.update()
+                self.panel.set_message("Манометр: отдаление")
             return
 
         self.model.execute_action(detail, action)
@@ -441,6 +461,7 @@ class Controller(QObject):
 
         self._level_gauge_zoomed = False
         self._controller_zoomed = False
+        self._manometer_zoomed = False
         self.panel.set_message("⚠ АВАРИЙНЫЙ СТОП")
         self.panel.set_inventory(self.model.get_inventory())
 

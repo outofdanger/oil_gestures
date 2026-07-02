@@ -97,7 +97,7 @@ class Model:
     def get_highlighted(self):
         return self._highlighted
 
-    def get_menu_actions(self, detail, level_gauge_zoomed=False, controller_zoomed=False):
+    def get_menu_actions(self, detail, level_gauge_zoomed=False, controller_zoomed=False, manometer_zoomed=False):
         if detail.name == "level_gauge_base":
             actions = []
 
@@ -154,6 +154,17 @@ class Model:
 
         if detail.name == "level_gauge_cover":
             return detail.get_menu_actions()
+
+        if isinstance(detail, Manometer):
+            actions = []
+
+            if manometer_zoomed:
+                actions.append(("🔎 Отдалить", "unfocus_manometer"))
+            else:
+                actions.append(("🔍 Приблизить", "focus_manometer"))
+
+            actions.extend(detail.get_menu_actions())
+            return actions
 
         if getattr(detail, "parent_assembly", None) is not None:
             return []
