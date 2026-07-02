@@ -1,6 +1,6 @@
 import pyvista as pv
 
-from oil_gestures.simulator.details_and_particles import Body, Valve, Manometer, Plug, Flap, LevelGaugeAssembly, LevelGaugeScreen, ParticleSystem, ControllerDoor, ControllerScreen, ControllerLever, LevelGaugeCover
+from oil_gestures.simulator.details_and_particles import Body, Valve, Manometer, Plug, Flap, LevelGaugeAssembly, LevelGaugeScreen, ParticleSystem, ControllerDoor, ControllerScreen, ControllerLever, LevelGaugeCover, TexturedButton
 
 DETAILS = {
     1: ("main_body", Body, "white", [11], (0, 1, 0), 1.0),
@@ -67,10 +67,10 @@ LEVEL_GAUGE_CONFIG = {
     1: ("level_gauge_base", "#b7a66a"),
     2: ("level_gauge_flap", "#8a7a45"),
     3: ("level_gauge_screen", "#5f615e"),
-    4: ("level_gauge_button_mode", "#d6d4ce"),
+    4: ("level_gauge_button_mode", "#969590"),
     5: ("level_gauge_button_input_output", "#969590"),
-    6: ("level_gauge_button_level", "silver"),
-    7: ("level_gauge_button_return", "#75726a"),
+    6: ("level_gauge_button_level", "#969590"),
+    7: ("level_gauge_button_return", "#969590"),
 }
 }
 
@@ -390,6 +390,65 @@ def load_level_gauge(plotter, details):
             part_detail = LevelGaugeScreen(mesh, actor, name, plotter, actor_color)
         elif name == "level_gauge_cover":
             part_detail = LevelGaugeCover(mesh, actor, name, screen_detail=None, color=actor_color)
+
+        elif name == "level_gauge_button_mode":
+
+            part_detail = TexturedButton(
+
+                mesh, actor, name, plotter,
+
+                label="РЕЖИМ",
+
+                bg_color=(210, 210, 210, 255),
+
+                text_color=(20, 20, 20, 255)
+
+            )
+
+        elif name == "level_gauge_button_level":
+
+            part_detail = TexturedButton(
+
+                mesh, actor, name, plotter,
+
+                label="УРОВЕНЬ",
+
+                bg_color=(210, 210, 210, 255),
+
+                text_color=(20, 20, 20, 255)
+
+            )
+
+        elif name == "level_gauge_button_return":
+
+            part_detail = TexturedButton(
+
+                mesh, actor, name, plotter,
+
+                label="ВОЗВРАТ",
+
+                bg_color=(210, 210, 210, 255),
+
+                text_color=(20, 20, 20, 255)
+
+            )
+
+
+        elif name == "level_gauge_button_input_output":
+
+            part_detail = TexturedButton(
+
+                mesh, actor, name, plotter,
+
+                label="ВВОД/ВЫВОД",
+
+                bg_color=(210, 210, 210, 255),
+
+                text_color=(20, 20, 20, 255),
+
+                font_scale=0.14,
+
+            )
         else:
             part_cls = Flap if name == "level_gauge_flap" else Body
             part_detail = part_cls(mesh, actor, name, actor_color)

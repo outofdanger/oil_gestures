@@ -1,6 +1,7 @@
 import numpy as np
 import pyvista as pv
 from PySide6.QtGui import QImage, QPainter, QColor, QPen, QFont
+from PySide6.QtCore import Qt
 # ========================
 # БАЗОВАЯ ДЕТАЛЬ
 # ========================
@@ -413,7 +414,7 @@ class LevelGaugeScreen(Detail):
         self._texture = None
         self._tex_w = 512
         self._tex_h = 512
-        self._font_scale = 0.65
+        self._font_scale = 0.95
         self._build_plane()
         self.render_lines(["УРОВНЕМЕР"])
 
@@ -620,7 +621,108 @@ class LevelGaugeCover(Detail):
         self.actor.GetMapper().SetInputData(self.mesh)
         self._angle += step
 
+class TexturedButton(Detail):
+    def __init__(
+        self,
+        mesh,
+        actor,
+        name,
+        plotter,
+        label="MODE",
+        bg_color=(190, 190, 190, 255),
+        text_color=(20, 20, 20, 255),
+        border_color=(110, 110, 110, 255),
+        font_family="Arial",
+        font_scale=0.2,
+    ):
+        super().__init__(mesh, actor, name)
+        self.plotter = plotter
+        self.label = label
+        self.bg_color = bg_color
+        self.text_color = text_color
+        self.border_color = border_color
+        self.font_family = font_family
+        self.font_scale = font_scale
+        self.texture_actor = None
+        self.texture = None
+        self._plane = None
+        self.create_texture()
 
+    def create_texture(self):
+        b = self.mesh.bounds
+        center = self.mesh.center
+        width = max(b[1] - b[0], 0.01)
+        height = max(b[3] - b[2], 0.01)
+
+        self._plane = pv.Plane(
+            center=(center[0], center[1], b[5] + 0.003),
+            direction=(0, 0, 1),
+            i_size=width * 0.90,
+            j_size=height * 0.90,
+        )
+
+        if width >= height:
+            tex_w = 512
+            tex_h = max(128, int(512 * height / width))
+        else:
+            tex_h = 512
+            tex_w = max(128, int(512 * width / height))
+
+        image = QImage(tex_w, tex_h, QImage.Format_RGBA8888)
+        image.fill(QColor(*self.bg_color))
+
+        painter = QPainter(image)
+
+        # Для более резкого текста:
+        painter.setRenderHint(QPainter.Antialiasing, False)
+        painter.setRenderHint(QPainter.TextAntialiasing, False)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform, False)
+
+        painter.fillRect(0, 0, tex_w, tex_h, QColor(*self.bg_color))
+        painter.setPen(QPen(QColor(*self.border_color), 2))
+        painter.drawRect(1, 1, tex_w - 2, tex_h - 2)
+
+        font_px = max(8, int(min(tex_w, tex_h) * self.font_scale))
+        font = QFont(self.font_family)
+        font.setPixelSize(font_px)
+        font.setBold(True)
+        painter.setFont(font)
+        painter.setPen(QColor(*self.text_color))
+
+        text_rect = image.rect().adjusted(8, 4, -8, -4)
+        painter.drawText(text_rect, Qt.AlignCenter | Qt.AlignVCenter, self.label)
+
+        painter.end()
+
+        ptr = image.bits()
+        arr = np.frombuffer(ptr, np.uint8).reshape((tex_h, tex_w, 4)).copy()
+        self.texture = pv.Texture(arr)
+
+        # Важно: отключить интерполяцию текстуры
+        self.texture.interpolate = False
+
+        if self.texture_actor is not None:
+            self.plotter.remove_actor(self.texture_actor, render=False)
+
+        self.texture_actor = self.plotter.add_mesh(
+            self._plane,
+            texture=self.texture,
+            lighting=False,
+            opacity=1.0,
+            show_edges=False,
+        )
+
+        self.texture_actor.PickableOff()
+
+    def show(self):
+        super().show()
+        if self.texture_actor is not None:
+            self.texture_actor.VisibilityOn()
+
+    def hide(self):
+        super().hide()
+        if self.texture_actor is not None:
+            self.texture_actor.VisibilityOff()
 # ========================
 # СБОРКА УРОВНЕМЕРА
 # ========================

@@ -102,7 +102,7 @@ class Camera:
             z0 + sz * 0.55,
         ], dtype=float)
 
-        distance = max(self._min_zoom, min(self._max_zoom, size * 3))
+        distance = max(self._min_zoom, min(self._max_zoom, size * 2.8))
 
         pos = np.array([
             focus[0],
