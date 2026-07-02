@@ -97,7 +97,7 @@ class Model:
     def get_highlighted(self):
         return self._highlighted
 
-    def get_menu_actions(self, detail, level_gauge_zoomed=False):
+    def get_menu_actions(self, detail, level_gauge_zoomed=False, controller_zoomed=False):
         if detail.name == "level_gauge_base":
             actions = []
 
@@ -109,6 +109,21 @@ class Model:
             assembly = getattr(detail, "parent_assembly", None)
             if assembly and getattr(assembly, "state", None) == "attached":
                 actions.append(("🔧 Снять", "remove_level_gauge"))
+
+            return actions
+
+        if detail.name in {
+            "controller_body",
+            "controller_screen",
+            "controller_panel",
+            "controller_door",
+        }:
+            actions = []
+
+            if controller_zoomed:
+                actions.append(("🔎 Отдалить", "unfocus_controller"))
+            else:
+                actions.append(("🔍 Приблизить", "focus_controller"))
 
             return actions
 
@@ -189,6 +204,27 @@ class Model:
             if d.name == name:
                 return d
         return None
+
+    def get_controller_bounds(self):
+        controller_parts = [
+            d for d in self.details
+            if getattr(d, "name", "").startswith("controller_")
+        ]
+
+        if not controller_parts:
+            return None
+
+        xs = []
+        ys = []
+        zs = []
+
+        for part in controller_parts:
+            b = part.bounds
+            xs.extend([b[0], b[1]])
+            ys.extend([b[2], b[3]])
+            zs.extend([b[4], b[5]])
+
+        return (min(xs), max(xs), min(ys), max(ys), min(zs), max(zs))
 
     def update_level_gauge_screen(self):
         if self.level_gauge_screen is not None:

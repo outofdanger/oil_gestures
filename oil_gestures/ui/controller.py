@@ -27,6 +27,7 @@ class Controller(QObject):
         self._measure_timer.timeout.connect(self._on_measure_complete)
 
         self._level_gauge_zoomed = False
+        self._controller_zoomed = False
 
         self.panel.emergency_clicked.connect(self._emergency_stop)
         self.panel.inventory_item_clicked.connect(self._on_inventory_click)
@@ -192,7 +193,11 @@ class Controller(QObject):
 
         self.model.highlight(detail)
 
-        actions = self.model.get_menu_actions(detail, self._level_gauge_zoomed)
+        actions = self.model.get_menu_actions(
+            detail,
+            self._level_gauge_zoomed,
+            self._controller_zoomed,
+        )
         if not actions:
             return
 
@@ -252,6 +257,23 @@ class Controller(QObject):
                 self._level_gauge_zoomed = False
                 self.scene.update()
                 self.panel.set_message("Уровнемер: отдаление")
+            return
+        if action == "focus_controller":
+            bounds = self.model.get_controller_bounds()
+            if bounds is not None and not self._controller_zoomed:
+                self.camera.save_current_view()
+                self.camera.focus_on_controller(bounds)
+                self._controller_zoomed = True
+                self.scene.update()
+                self.panel.set_message("Контроллер: приближение")
+            return
+
+        if action == "unfocus_controller":
+            if self._controller_zoomed:
+                self.camera.restore_saved_view()
+                self._controller_zoomed = False
+                self.scene.update()
+                self.panel.set_message("Контроллер: отдаление")
             return
 
         self.model.execute_action(detail, action)
@@ -418,6 +440,7 @@ class Controller(QObject):
                 ps.stop()
 
         self._level_gauge_zoomed = False
+        self._controller_zoomed = False
         self.panel.set_message("⚠ АВАРИЙНЫЙ СТОП")
         self.panel.set_inventory(self.model.get_inventory())
 

@@ -112,6 +112,30 @@ class Camera:
 
         self.plotter.camera_position = [tuple(pos), tuple(focus), (0, 1, 0)]
 
+    def focus_on_controller(self, bounds):
+        x0, x1, y0, y1, z0, z1 = bounds
+
+        sx = x1 - x0
+        sy = y1 - y0
+        sz = z1 - z0
+        size = max(sx, sy, sz, 0.5)
+
+        focus = np.array([
+            x0 + sx * 0.50,
+            y0 + sy * 0.83,
+            z0 + sz * 0.50,
+        ], dtype=float)
+
+        distance = max(self._min_zoom, min(self._max_zoom, size * 2.2))
+
+        pos = np.array([
+            focus[0],
+            focus[1] + size * 0.15,
+            z1 + distance,
+        ], dtype=float)
+
+        self.plotter.camera_position = [tuple(pos), tuple(focus), (0, 1, 0)]
+
     # ========================
     # ПЕРЕМЕЩЕНИЕ
     # ========================
