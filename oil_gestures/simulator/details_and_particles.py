@@ -68,7 +68,6 @@ class Valve(Detail):
         self._max = 360
         self._opened = False
         self._closed = True
-        self.particle_system = None
 
     def open(self):
         if self._target == self._max:
@@ -148,15 +147,7 @@ class Valve(Detail):
             self._rotating = False
         self._rotate(step)
         self._home += step
-        
-        if self.particle_system:
-            if self._home <= self._min:
-                self.particle_system.stop()
-            else:
-                percent = (self._home / self._max) * 100
-                if not self.particle_system._active:
-                    self.particle_system.start()
-                self.particle_system.set_intensity(percent)
+
 
 class Flap(Detail):
     def __init__(
@@ -369,6 +360,8 @@ class Manometer(Detail):
     def remove(self):
         self.state = "removed"
         self.hide()
+        self._current_mpa = 0.0
+        self.set_pressure_mpa(0.0)
         if self._gauge_face:
             self._gauge_face.VisibilityOff()
         if self._gauge_arrow:
@@ -385,23 +378,13 @@ class Manometer(Detail):
     def get_menu_actions(self):
         if self.state == "attached":
             return [
-                ("📊 4 МПа", "set_4"),
-                ("📊 8 МПа", "set_8"),
                 ("🔧 Снять", "remove"),
             ]
         else:
             return [("🔧 Установить", "attach")]
 
     def execute_action(self, action):
-        if action == "set_4":
-            self.set_pressure_mpa(4)
-        elif action == "set_8":
-            self.set_pressure_mpa(8)
-        elif action == "set_12":
-            self.set_pressure_mpa(12)
-        elif action == "set_16":
-            self.set_pressure_mpa(16)
-        elif action == "remove":
+        if action == "remove":
             self.remove()
         elif action == "attach":
             self.attach()
@@ -737,13 +720,14 @@ class ParticleSystem:
         self._base_count = count
         self._active_count = count
         self._max_count = count
+        self._frame_counter = 0
 
         if particle_type == self.OIL:
             self._color = "black"
             self._opacity = 0.64
-            self._gravity = np.array([0, -7, 0])
+            self._gravity = np.array([0, -5, 0])
             self._lifetime_min = 0.9
-            self._lifetime_max = 1.6
+            self._lifetime_max = 1.4
             self._speed_min = 1.9
             self._speed_max = 3.1
         elif particle_type == self.AIR_BLAST:
@@ -759,7 +743,7 @@ class ParticleSystem:
             self._opacity = 0.17
             self._gravity = np.array([0, -2.8, 0])
             self._lifetime_min = 0.1
-            self._lifetime_max = 0.8
+            self._lifetime_max = 0.7
             self._speed_min = 3.4
             self._speed_max = 5.6
 
@@ -859,7 +843,10 @@ class ParticleSystem:
 
         self._mesh.points = self._positions
         self._actor.GetMapper().SetInputData(self._mesh)
-        self._update_point_size_by_camera()
+        self._frame_counter += 1
+        if self._frame_counter == 10:
+            self._frame_counter = 0
+            self._update_point_size_by_camera()
 
     def _rotate_cone(self, v, angle1, angle2):
         if abs(v[0]) < 0.001 and abs(v[2]) < 0.001:

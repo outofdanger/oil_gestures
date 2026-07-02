@@ -40,9 +40,6 @@ class Model:
             direction=(0, 1, 0),
             particle_type=ParticleSystem.OIL
         )
-        det = self.details[10]
-        det.particle_system = self.particle_systems["1"]
-
         self.particle_systems["2"] = ParticleSystem(
             plotter,
             position=(2.17, 5.54, -0.12),
@@ -56,27 +53,66 @@ class Model:
             direction=(0, -1, 0),
             particle_type=ParticleSystem.OIL
         )
-
         self.particle_systems["4"] = ParticleSystem(
             plotter,
             position=(-3.93, 2.69, -0.11),
             direction=(0, 1, 0),
-            particle_type=ParticleSystem.GAS
+            particle_type=ParticleSystem.GAS, 
+            count=300
         )
 
         self.particle_systems["5"] = ParticleSystem(
             plotter,
             position=(-4.11, 2.1, -0.11),
             direction=(-1, 0, 0),
-            particle_type=ParticleSystem.GAS
+            particle_type=ParticleSystem.GAS, 
+            count=300
         )
 
         self.particle_systems["6"] = ParticleSystem(
             plotter,
             position=(-1.82, 1.1, -0.12),
             direction=(-1, 0, 0),
-            particle_type=ParticleSystem.GAS
+            particle_type=ParticleSystem.GAS, 
+            count=300
         )
+
+
+        CHAINS = {
+            "1": {
+                "valves": ["valve_4", "valve_5", "valve_12"],
+                "blocker": "manometer_2",
+            },
+            "2": {
+                "valves": ["valve_4", "valve_3", "valve_13"],
+                "blocker": "manometer_3",
+            },
+            "3": {
+                "valves": ["valve_4", "valve_3", "valve_15"],
+                "blocker": "",
+            },
+            "4": {
+                "valves": ["valve_1", "valve_11"],
+                "blocker": "manometer_1",
+            },
+            "5": {
+                "valves": ["valve_1"],
+                "blocker": "plug",
+            },
+            "6": {
+                "valves": ["valve_14"],
+                "blocker": "manometer_4",
+            },
+        }
+        self.chains = CHAINS
+
+
+        self.MANOMETER_MAX_MPA = 12
+
+        # В __init__ после загрузки:
+        self._valve_cache = {}
+        for name in ["valve_1", "valve_2", "valve_3", "valve_4", "valve_5", "valve_11", "valve_12", "valve_13", "valve_14", "valve_15"]:
+            self._valve_cache[name] = self.get_by_name(name)
 
     def get_by_actor(self, actor):
         for d in self.details:
@@ -204,6 +240,36 @@ class Model:
         for ps in self.particle_systems.values():
             if ps._active:
                 ps.tick(dt)
+
+        # Обновить фонтаны по цепочкам вентилей
+        for key, config in self.chains.items():
+            min_percent = 100
+            for vname in config["valves"]:
+                valve = self._valve_cache.get(vname)
+                if valve:
+                    percent = (valve._home / valve._max) * 100
+                    min_percent = min(min_percent, percent)
+            
+            ps = self.particle_systems.get(key)
+            m_name = config.get("blocker")
+            m = self.get_by_name(m_name) if m_name else None
+
+            if m and m.state == "attached":
+                if hasattr(m, 'set_pressure_mpa'):
+                    m.set_pressure_mpa(min_percent * self.MANOMETER_MAX_MPA / 100)
+                if ps:
+                    ps.stop()
+            else:
+                if m and hasattr(m, 'set_pressure_mpa'):
+                    m.set_pressure_mpa(0)
+                if ps:
+                    if min_percent > 0:
+                        if not ps._active:
+                            ps.start()
+                        ps.set_intensity(min_percent)
+                    else:
+                        ps.stop()
+
 
     def get_inventory(self):
         items = []
