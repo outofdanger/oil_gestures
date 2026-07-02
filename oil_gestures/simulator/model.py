@@ -118,8 +118,7 @@ class Model:
         if detail.name in {
             "controller_body",
             "controller_screen",
-            "controller_panel",
-            "controller_door",
+            "controller_panel"
         }:
             actions = []
 

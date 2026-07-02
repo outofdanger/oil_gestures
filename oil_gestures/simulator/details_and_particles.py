@@ -430,6 +430,7 @@ class LevelGaugeScreen(Detail):
         self._texture = None
         self._tex_w = 512
         self._tex_h = 512
+        self._font_scale = 0.65
         self._build_plane()
         self.render_lines(["УРОВНЕМЕР"])
 
@@ -487,7 +488,7 @@ class LevelGaugeScreen(Detail):
         padding_top = int(h * 0.10)
         padding_left = int(w * 0.05)
         line_height = int((h - padding_top * 2) / max_lines)
-        font_size = max(8, int(line_height * 0.90))
+        font_size = max(6, int(line_height * self._font_scale))
 
         font = QFont("Consolas", font_size)
         font.setBold(False)
@@ -549,11 +550,6 @@ class LevelGaugeScreen(Detail):
         super().hide()
         if self._screen_plane_actor:
             self._screen_plane_actor.VisibilityOff()
-
-class ControllerScreen(LevelGaugeScreen):
-    def __init__(self, mesh, actor, name, plotter, color=None):
-        super().__init__(mesh, actor, name, plotter, color)
-        self.render_lines(["КОНТРОЛЛЕР", "ПИТАНИЕ: ВЫКЛ"])
 
 class LevelGaugeCover(Detail):
     """
@@ -1011,3 +1007,46 @@ class ControllerLever(Detail):
         self.mesh.rotate_vector(self._axis, delta, point=self._pivot_point, inplace=True)
         self.actor.GetMapper().SetInputData(self.mesh)
         self._angle = target_angle
+
+class ControllerScreen(LevelGaugeScreen):
+    def __init__(self, mesh, actor, name, plotter, color=None):
+        super().__init__(mesh, actor, name, plotter, color)
+        self._font_scale = 0.5
+        self.render_lines(["КОНТРОЛЛЕР", "", "ПИТАНИЕ: ВЫКЛ"])
+
+
+    def _build_plane(self):
+        b = self.mesh.bounds
+        center = (
+            (b[0] + b[1]) / 2,
+            (b[2] + b[3]) / 2,
+            b[5] + 0.006,
+        )
+
+        width = max(b[1] - b[0], 0.01)
+        height = max(b[3] - b[2], 0.01)
+
+        # Вот эти множители увеличивают видимый экран
+        width_scale = 2
+        height_scale = 1.15
+
+        if width >= height:
+            self._tex_w = 512
+            self._tex_h = max(64, int(512 * height / width))
+        else:
+            self._tex_h = 512
+            self._tex_w = max(64, int(512 * width / height))
+
+        self._screen_plane_mesh = pv.Plane(
+            center=center,
+            direction=(0, 0, 1),
+            i_size=width * width_scale,
+            j_size=height * height_scale,
+        )
+
+        self._screen_plane_actor = self.plotter.add_mesh(
+            self._screen_plane_mesh,
+            color="black",
+            lighting=False,
+            opacity=1.0,
+        )

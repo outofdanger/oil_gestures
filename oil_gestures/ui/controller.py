@@ -188,6 +188,54 @@ class Controller(QObject):
 
             self.scene.update()
             return
+
+        if detail.name == "controller_button_one":
+            ok = self.model.controller_ui.press_menu()
+            self.model.update_controller_screen()
+            if not ok:
+                self._flash_detail("controller_circle_five", "red", 1000)
+            self.scene.update()
+            self.panel.set_message("Контроллер: выбор режима" if ok else "Нет питания")
+            return
+
+        if detail.name in {"controller_button_top", "controller_button_right"}:
+            ok = self.model.controller_ui.press_next()
+            self.model.update_controller_screen()
+            if not ok:
+                self._flash_detail("controller_circle_five", "red", 1000)
+            self.scene.update()
+            self.panel.set_message("Контроллер: следующий режим" if ok else "Нет питания")
+            return
+
+        if detail.name in {"controller_button_lower", "controller_button_left"}:
+            ok = self.model.controller_ui.press_prev()
+            self.model.update_controller_screen()
+            if not ok:
+                self._flash_detail("controller_circle_five", "red", 1000)
+            self.scene.update()
+            self.panel.set_message("Контроллер: предыдущий режим" if ok else "Нет питания")
+            return
+
+        if detail.name == "controller_button_center":
+            ok = self.model.controller_ui.press_confirm()
+            self.model.update_controller_screen()
+            if ok:
+                self._flash_detail("controller_circle_two", "yellow", 600)
+            else:
+                self._flash_detail("controller_circle_five", "red", 1000)
+            self.scene.update()
+            self.panel.set_message(self.model.controller_ui.status if ok else "Нет питания")
+            return
+
+        if detail.name == "controller_button_long":
+            ok = self.model.controller_ui.press_back()
+            self.model.update_controller_screen()
+            if not ok:
+                self._flash_detail("controller_circle_five", "red", 1000)
+            self.scene.update()
+            self.panel.set_message("Контроллер: меню" if ok else "Нет питания")
+            return
+
     def on_right_click(self, actor=None):
         detail = self.model.get_by_actor(actor) if actor is not None else None
         if detail is None:

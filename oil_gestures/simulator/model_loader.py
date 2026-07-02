@@ -29,7 +29,7 @@ CONTROLLER_CONFIG = {
     "offset": (8.0, -1, 0.0),
     "rotation_y": 0.0,
     "parts": {
-        0: ("controller_door", "#8a7a45"),
+        0: ("controller_door", "silver"),
         1: ("controller_screen", "#1d2a1d"),
         2: ("controller_panel", "#3a3a3a"),
         3: ("controller_circle_one", "silver"),
