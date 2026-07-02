@@ -1,7 +1,7 @@
 from PySide6.QtCore import QObject, QTimer, Qt, Signal
 from PySide6.QtWidgets import QMenu
 from PySide6.QtGui import QCursor
-from oil_gestures.simulator.details_and_particles import Flap
+from oil_gestures.simulator.details_and_particles import Flap, LevelGaugeCover
 
 class Controller(QObject):
     """
@@ -80,6 +80,16 @@ class Controller(QObject):
             self.model.execute_action(detail, "pulse_open")
             self._start_timer()
             self.panel.set_message("Flap: стравливание давления")
+            return
+
+        if isinstance(detail, LevelGaugeCover):
+            if detail._closed:
+                self.model.execute_action(detail, "open")
+                self.panel.set_message("Крышка: открывается")
+            else:
+                self.model.execute_action(detail, "close")
+                self.panel.set_message("Крышка: закрывается")
+            self._start_timer()
             return
 
         if detail.name == "level_gauge_button_mode":
@@ -383,7 +393,7 @@ class Controller(QObject):
     def _on_measure_complete(self):
         ui = self.model.level_gauge_ui
         if ui.current_screen == "measure_level":
-            ui._level_measured = True
+            ui.complete_level_measurement()
         elif ui.current_screen == "measure_pressure":
             ui._pressure_measured = True
         self.model.update_level_gauge_screen()

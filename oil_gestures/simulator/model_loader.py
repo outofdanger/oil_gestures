@@ -1,6 +1,6 @@
 import pyvista as pv
 
-from oil_gestures.simulator.details_and_particles import Body, Valve, Manometer, Plug, Flap, LevelGaugeAssembly, LevelGaugeScreen, ParticleSystem, ControllerDoor, ControllerScreen, ControllerLever
+from oil_gestures.simulator.details_and_particles import Body, Valve, Manometer, Plug, Flap, LevelGaugeAssembly, LevelGaugeScreen, ParticleSystem, ControllerDoor, ControllerScreen, ControllerLever, LevelGaugeCover
 
 DETAILS = {
     1: ("main_body", Body, "white", [11], (0, 1, 0), 1.0),
@@ -285,6 +285,7 @@ def load_level_gauge(plotter, details):
     ]
 
     highlight_parts = {
+        "level_gauge_base",
         "level_gauge_flap",
         "level_gauge_screen",
         "level_gauge_cover",
@@ -387,6 +388,8 @@ def load_level_gauge(plotter, details):
             )
         elif name == "level_gauge_screen":
             part_detail = LevelGaugeScreen(mesh, actor, name, plotter, actor_color)
+        elif name == "level_gauge_cover":
+            part_detail = LevelGaugeCover(mesh, actor, name, screen_detail=None, color=actor_color)
         else:
             part_cls = Flap if name == "level_gauge_flap" else Body
             part_detail = part_cls(mesh, actor, name, actor_color)
@@ -395,6 +398,12 @@ def load_level_gauge(plotter, details):
 
         level_gauge_parts.append(part_detail)
         details.append(part_detail)
+
+    # Связать крышку с экраном
+    cover = next((p for p in level_gauge_parts if p.name == "level_gauge_cover"), None)
+    screen = next((p for p in level_gauge_parts if p.name == "level_gauge_screen"), None)
+    if cover is not None and screen is not None:
+        cover.set_screen(screen)
 
     level_gauge = LevelGaugeAssembly("level_gauge", level_gauge_parts)
     details.append(level_gauge)

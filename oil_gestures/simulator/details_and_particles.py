@@ -512,6 +512,93 @@ class ControllerScreen(LevelGaugeScreen):
         super().__init__(mesh, actor, name, plotter, color)
         self.render_lines(["КОНТРОЛЛЕР", "ПИТАНИЕ: ВЫКЛ"])
 
+class LevelGaugeCover(Detail):
+    """
+    Крышка уровнемера — открывается/закрывается по ЛКМ.
+    При закрытии скрывает экран, при открытии показывает.
+    """
+
+    def __init__(self, mesh, actor, name, screen_detail=None, color=None):
+        super().__init__(mesh, actor, name)
+        self.highlightable = True
+        self._screen_detail = screen_detail
+
+        self._angle = 0.0
+        self._target_angle = 0.0
+        self._speed = 100.0
+        self._animating = False
+        self._closed = False
+
+        b = self.mesh.bounds
+        # Петля — верхний край крышки (y_max), крышка складывается вниз
+        # Точка вращения берётся по переднему краю (z_max) верхнего ребра
+        self._hinge_point = (
+            (b[0] + b[1]) / 2,
+            b[2],                  # y_max — верхний край, он неподвижен
+            (b[4]),
+        )
+        # Ось Z: крышка поворачивается вперёд/назад относительно верхнего края
+        self._axis = (1, 0, 0)
+
+    def set_screen(self, screen_detail):
+        self._screen_detail = screen_detail
+
+    def open(self):
+        if self._animating or not self._closed:
+            return
+        self._target_angle = 0.0
+        self._closed = False
+        self._animating = True
+        if self._screen_detail is not None:
+            self._screen_detail.show()
+
+    def close(self):
+        if self._animating or self._closed:
+            return
+        self._target_angle = 133.9
+        self._closed = True
+        self._animating = True
+
+    def get_menu_actions(self):
+        if self._closed:
+            return [("🔓 Открыть крышку", "open")]
+        return [("🔒 Закрыть крышку", "close")]
+
+    def execute_action(self, action):
+        if action == "open":
+            self.open()
+        elif action == "close":
+            self.close()
+
+    def has_animation(self):
+        return self._animating
+
+    def tick_animation(self, dt):
+        if not self._animating:
+            return
+
+        delta = self._target_angle - self._angle
+        if abs(delta) < 0.5:
+            self._apply_rotation(delta)
+            self._animating = False
+            if self._closed and self._screen_detail is not None:
+                self._screen_detail.hide()
+            return
+
+        step = self._speed * dt
+        if delta < 0:
+            step = -step
+        if abs(step) > abs(delta):
+            step = delta
+
+        self._apply_rotation(step)
+
+    def _apply_rotation(self, step):
+        self.mesh.rotate_vector(self._axis, step, point=self._hinge_point, inplace=True)
+        self.actor.GetMapper().SetInputData(self.mesh)
+        self._angle += step
+
+
 # ========================
 # СБОРКА УРОВНЕМЕРА
 # ========================

@@ -137,6 +137,9 @@ class Model:
         if detail.name in BUTTON_INFO:
             return BUTTON_INFO[detail.name]
 
+        if detail.name == "level_gauge_cover":
+            return detail.get_menu_actions()
+
         if getattr(detail, "parent_assembly", None) is not None:
             return []
 

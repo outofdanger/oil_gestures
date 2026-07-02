@@ -1,3 +1,5 @@
+import random
+
 class LevelGaugeUIState:
     MODE_LEVEL = "Измерение уровня"
     MODE_PRESSURE = "Измерение давления"
@@ -19,6 +21,7 @@ class LevelGaugeUIState:
         self.result_index = 0
         self._level_measured = False
         self._pressure_measured = False
+        self._last_level_m = None  # сохранённое значение последнего измерения
 
     def press_mode(self):
         if self.current_screen == "home":
@@ -53,6 +56,11 @@ class LevelGaugeUIState:
     def press_level(self):
         self.current_screen = "measure_level"
 
+    def complete_level_measurement(self):
+        """Вызывается по таймеру когда измерение завершено — генерирует случайное значение."""
+        self._last_level_m = random.randint(1000, 1200)
+        self._level_measured = True
+
     def press_return(self):
         self.current_screen = "home"
 
@@ -73,8 +81,8 @@ class LevelGaugeUIState:
 
         if self.current_screen == "measure_level":
             lines = ["ИЗМЕРЕНИЕ УРОВНЯ", "", "Текущий уровень:"]
-            if self._level_measured:
-                lines.append("1200 м")
+            if self._level_measured and self._last_level_m is not None:
+                lines.append(f"{self._last_level_m} м")
             else:
                 lines.append("--")
             return lines
@@ -88,8 +96,9 @@ class LevelGaugeUIState:
             return lines
 
         if self.current_screen == "results":
+            level_str = f"{self._last_level_m} м" if self._level_measured and self._last_level_m is not None else "--"
             all_results = [
-                "Уровень: 1200 м" if self._level_measured else "Уровень: --",
+                f"Уровень: {level_str}" if self._level_measured else "Уровень: --",
                 "Давление: 8.2 МПа" if self._pressure_measured else "Давление: --",
                 "Статус: норма",
             ]
