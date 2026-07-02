@@ -2,6 +2,7 @@ from oil_gestures.simulator.model_loader import load_model
 from oil_gestures.simulator.details_and_particles import ParticleSystem, Manometer
 from oil_gestures.simulator.level_gauge_ui import LevelGaugeUIState
 from oil_gestures.simulator.controller_ui import ControllerUIState
+
 class Model:
     def __init__(self, plotter, filepath):
         self.plotter = plotter
@@ -39,6 +40,8 @@ class Model:
             direction=(0, 1, 0),
             particle_type=ParticleSystem.OIL
         )
+        det = self.details[10]
+        det.particle_system = self.particle_systems["1"]
 
         self.particle_systems["2"] = ParticleSystem(
             plotter,

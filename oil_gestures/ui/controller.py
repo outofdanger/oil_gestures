@@ -30,6 +30,7 @@ class Controller(QObject):
         self._controller_zoomed = False
         self._manometer_zoomed = False
 
+        self.panel.help_clicked.connect(self._show_help)
         self.panel.emergency_clicked.connect(self._emergency_stop)
         self.panel.inventory_item_clicked.connect(self._on_inventory_click)
 
@@ -237,6 +238,31 @@ class Controller(QObject):
             if action is None:
                 item = menu.addAction(label)
                 item.setEnabled(False)
+            elif action == "partial":
+                from PySide6.QtWidgets import QWidget, QVBoxLayout, QSlider, QLabel, QPushButton, QWidgetAction
+                slider_menu = QMenu("Выберите % открытия", menu)
+                slider_menu.setStyleSheet(menu.styleSheet())
+                
+                slider_widget = QWidget()
+                slider_layout = QVBoxLayout(slider_widget)
+                slider = QSlider(Qt.Horizontal)
+                slider.setRange(0, 100)
+                slider.setValue(50)
+                value_label = QLabel("50%")
+                value_label.setStyleSheet("color: black;")
+                slider.valueChanged.connect(lambda v: value_label.setText(f"{v}%"))
+                slider_layout.addWidget(value_label)
+                slider_layout.addWidget(slider)
+                
+                apply_btn = QPushButton("Применить")
+                apply_btn.clicked.connect(lambda: self._menu_action(detail, f"set_{slider.value()}"))
+                slider_layout.addWidget(apply_btn)
+                
+                slider_action = QWidgetAction(menu)
+                slider_action.setDefaultWidget(slider_widget)
+                slider_menu.addAction(slider_action)
+                
+                menu.addMenu(slider_menu)
             else:
                 menu.addAction(label, lambda a=action, d=detail: self._menu_action(d, a))
 
@@ -447,14 +473,6 @@ class Controller(QObject):
     # ========================
 
     def _emergency_stop(self):
-        for d in self.model.details:
-            if hasattr(d, "attach") and hasattr(d, "state"):
-                d.attach()
-            if hasattr(d, "stop"):
-                d.stop()
-
-        self.model._active.clear()
-
         if self.model.particle_systems:
             for ps in self.model.particle_systems.values():
                 ps.stop()
@@ -463,7 +481,6 @@ class Controller(QObject):
         self._controller_zoomed = False
         self._manometer_zoomed = False
         self.panel.set_message("⚠ АВАРИЙНЫЙ СТОП")
-        self.panel.set_inventory(self.model.get_inventory())
 
     def _on_inventory_click(self, name: str):
         detail = self.model.get_by_name(name)
@@ -472,6 +489,41 @@ class Controller(QObject):
             self.model._active.discard(detail)
             self.panel.set_inventory(self.model.get_inventory())
             self.panel.set_message(f"{name}: установлен(а)")
+
+    def _show_help(self):
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel
+        
+        dlg = QDialog()
+        dlg.setWindowTitle("Инструкция по управлению")
+        dlg.setFixedSize(600, 500)
+        dlg.setStyleSheet("background-color: white;")
+        
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(12)
+        
+        text = QLabel("""
+        🖱️ Мышь:
+        • ЛКМ + тянуть — вращение камеры
+        • ПКМ — меню действий над деталью
+        • Колёсико — zoom
+        
+        ⌨️ Клавиши:
+        • 1-4 — ракурсы камеры
+        • R — сброс камеры
+        • Стрелки — движение камеры
+        • 1-6 — вкл/выкл частицы
+        
+        ✋ Жесты (когда курсор выключен):
+        • ✊ Кулак — закрыть
+        • ✋ Ладонь — открыть
+        • 👍 Палец вверх — аварийный стоп
+        • ✌ Виктори — вкл/выкл курсор
+        """)
+        text.setStyleSheet("color: black; font-size: 13px;")
+        layout.addWidget(text)
+        
+        dlg.exec()
 
     # А это зона того, что добавил Влад
 

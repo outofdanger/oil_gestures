@@ -67,6 +67,8 @@ class Valve(Detail):
         self._min = 0
         self._max = 360
         self._opened = False
+        self._closed = True
+        self.particle_system = None
 
     def open(self):
         if self._target == self._max:
@@ -76,6 +78,7 @@ class Valve(Detail):
             self._speed = 90.0
             self._rotating = True
             self._opened = True
+            self._closed = False
 
     def close(self):
         if self._target == self._min:
@@ -85,6 +88,15 @@ class Valve(Detail):
             self._speed = -90.0
             self._rotating = True
             self._opened = False
+            self._closed = True
+    
+    def set_position(self, percent):
+        target_angle = self._max * (percent / 100)
+        self._target = target_angle
+        self._speed = 90.0 if target_angle > self._home else -90.0
+        self._rotating = True
+        self._opened = (percent == 100)
+        self._closed = (percent == 0)
 
     def stop(self):
         self._rotating = False
@@ -96,15 +108,30 @@ class Valve(Detail):
 
     def get_menu_actions(self):
         if self._opened:
-            return [("🔒 Закрыть", "close")]
+            return [
+                ("🔒 Закрыть", "close"),
+                ("🔧 Частично...", "partial"),
+            ]
+        elif self._closed:
+            return [
+                ("🔓 Открыть", "open"),
+                ("🔧 Частично...", "partial"),
+            ]
         else:
-            return [("🔓 Открыть", "open")]
+            return [
+                ("🔒 Закрыть", "close"),
+                ("🔓 Открыть", "open"),
+                ("🔧 Частично...", "partial"),
+            ]
 
     def execute_action(self, action):
         if action == "open":
             self.open()
         elif action == "close":
             self.close()
+        elif action.startswith("set_"):
+            percent = int(action.replace("set_", ""))
+            self.set_position(percent)
 
     def has_animation(self):
         return self._rotating
@@ -121,6 +148,15 @@ class Valve(Detail):
             self._rotating = False
         self._rotate(step)
         self._home += step
+        
+        if self.particle_system:
+            if self._home <= self._min:
+                self.particle_system.stop()
+            else:
+                percent = (self._home / self._max) * 100
+                if not self.particle_system._active:
+                    self.particle_system.start()
+                self.particle_system.set_intensity(percent)
 
 class Flap(Detail):
     def __init__(
@@ -281,6 +317,7 @@ class Manometer(Detail):
         self._arrow_center = None
         self._home_angle = 0
         self.state = "attached"
+        self._current_mpa = 0.0
 
     def create_gauge(self, plotter):
         center = self.mesh.center
@@ -306,9 +343,11 @@ class Manometer(Detail):
         self._gauge_arrow = plotter.add_mesh(arrow, color="red")
         self._arrow_mesh = arrow
         self._arrow_center = (pos[0], pos[1], pos[2] + 0.005)
+        self.set_pressure_mpa(0.0)
 
     def set_pressure_mpa(self, mpa):
         mpa = max(0, min(16, mpa))
+        self._current_mpa = mpa
         percent = mpa / 16 * 100
         angle = 210 - 240 * (percent / 100)
         delta = angle - self._home_angle
@@ -366,6 +405,10 @@ class Manometer(Detail):
             self.remove()
         elif action == "attach":
             self.attach()
+
+    @property
+    def pressure_mpa(self):
+        return self._current_mpa
 
 
 # ========================
@@ -683,7 +726,7 @@ class ParticleSystem:
     GAS = "gas"
     AIR_BLAST = "air_blast"
 
-    def __init__(self, plotter, position, direction=(0, 1, 0), particle_type=OIL, count=760):
+    def __init__(self, plotter, position, direction=(0, 1, 0), particle_type=OIL, count=500):
         self.plotter = plotter
         self.position = np.array(position, dtype=float)
         self.direction = np.array(direction, dtype=float)
@@ -695,13 +738,16 @@ class ParticleSystem:
         self._min_point_size = 6.0
         self._max_point_size = 18.0
         self._reference_distance = None
+        self._base_count = count
+        self._active_count = count
+        self._max_count = count
 
         if particle_type == self.OIL:
             self._color = "black"
             self._opacity = 0.64
             self._gravity = np.array([0, -7, 0])
-            self._lifetime_min = 1.2
-            self._lifetime_max = 1.9
+            self._lifetime_min = 0.9
+            self._lifetime_max = 1.6
             self._speed_min = 1.9
             self._speed_max = 3.1
         elif particle_type == self.AIR_BLAST:
@@ -774,22 +820,33 @@ class ParticleSystem:
         self._mesh.points = self._positions
         self._actor.GetMapper().SetInputData(self._mesh)
         self._actor.VisibilityOff()
+    
+    def set_intensity(self, percent):
+        percent = max(5, min(100, percent))
+        self._active_count = int(self._base_count * percent / 100)
 
     def tick(self, dt=0.016):
         if not self._active:
             return
 
         for i in range(self._count):
+            if i >= self._active_count:
+                self._lifetimes[i] = 0
+                self._positions[i] = self.position.copy()
+                self._velocities[i] = 0
+                continue
             if self._lifetimes[i] <= 0:
                 if self._type == self.AIR_BLAST:
                     angle1 = np.random.uniform(0, np.pi / 120)
                 else:
-                    angle1 = np.random.uniform(0, np.pi / 6)
+                    angle1 = np.random.uniform(0, np.pi / 12)
 
                 angle2 = np.random.uniform(0, 2 * np.pi)
                 dir_rotated = self._rotate_cone(self.direction, angle1, angle2)
                 speed = np.random.uniform(self._speed_min, self._speed_max)
                 self._positions[i] = self.position.copy()
+                if self._positions[i][1] < 0.0:
+                    self._positions[i][1] = 0.0
                 self._velocities[i] = dir_rotated * speed
                 self._lifetimes[i] = np.random.uniform(self._lifetime_min, self._lifetime_max)
             else:
@@ -797,7 +854,11 @@ class ParticleSystem:
                     self._lifetimes[i] -= dt
                     continue
                 self._velocities[i] += self._gravity * dt
-                self._positions[i] += self._velocities[i] * dt
+                new_pos = self._positions[i] + self._velocities[i] * dt
+                if new_pos[1] < 0.0:
+                    new_pos[1] = 0.0
+                    self._velocities[i][1] = 0.0
+                self._positions[i] = new_pos
                 self._lifetimes[i] -= dt
 
         self._mesh.points = self._positions

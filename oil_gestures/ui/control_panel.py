@@ -5,13 +5,14 @@ from PySide6.QtCore import Qt, Signal
 class ControlPanel(QWidget):
     """Правая панель управления."""
 
+    help_clicked = Signal()
     emergency_clicked = Signal()
     inventory_item_clicked = Signal(str)  # имя детали
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumWidth(200)
-        self.setStyleSheet("background-color: #2c3e50;")
+        self.setStyleSheet("background-color: gray;")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(15, 15, 15, 15)
@@ -20,7 +21,7 @@ class ControlPanel(QWidget):
         # Заголовок
         title = QLabel("ПАНЕЛЬ УПРАВЛЕНИЯ")
         title.setAlignment(Qt.AlignCenter)
-        title.setStyleSheet("color: white; font-size: 14px; font-weight: bold;")
+        title.setStyleSheet("color: white; font-size: 16px; font-weight: bold;")
         layout.addWidget(title)
 
         # Сообщение
@@ -35,7 +36,7 @@ class ControlPanel(QWidget):
 
         # Инвентарь
         self.inventory_label = QLabel("ИНВЕНТАРЬ")
-        self.inventory_label.setStyleSheet("color: #f39c12; font-size: 12px; font-weight: bold; padding: 4px;")
+        self.inventory_label.setStyleSheet("color: #f39c12; font-size: 14px; font-weight: bold; padding: 4px;")
         layout.addWidget(self.inventory_label)
 
         self.inventory_layout = QVBoxLayout()
@@ -43,6 +44,19 @@ class ControlPanel(QWidget):
         layout.addLayout(self.inventory_layout)
 
         layout.addStretch()
+
+        self.help_btn = QPushButton("СПРАВКА")
+        self.help_btn.setMinimumHeight(40)
+        self.help_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2980b9; color: white; font-size: 14px;
+                font-weight: bold; border: none; border-radius: 6px;
+            }
+            QPushButton:hover { background-color: #3498db; }
+            QPushButton:pressed { background-color: #1c6ea4; }
+        """)
+        self.help_btn.clicked.connect(self.help_clicked.emit)
+        layout.addWidget(self.help_btn)
 
         # Аварийный стоп
         self.emergency_btn = QPushButton("АВАРИЙНЫЙ СТОП")
