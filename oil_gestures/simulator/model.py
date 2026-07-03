@@ -3,7 +3,7 @@ from oil_gestures.simulator.details_and_particles import ParticleSystem, Manomet
 
 
 class Model:
-    def __init__(self, plotter, filepath, particle_count=760):
+    def __init__(self, plotter, filepath, particle_count=760, render_points_as_spheres=True):
         self.plotter = plotter
         self.details = load_model(plotter, filepath)
         self.particle_systems = {}
@@ -21,6 +21,7 @@ class Model:
             direction=(0, 1, 0),
             particle_type=ParticleSystem.OIL,
             count=particle_count,
+            render_points_as_spheres=render_points_as_spheres,
         )
 
         self.particle_systems["2"] = ParticleSystem(
@@ -29,6 +30,7 @@ class Model:
             direction=(0, 1, 0),
             particle_type=ParticleSystem.OIL,
             count=particle_count,
+            render_points_as_spheres=render_points_as_spheres,
         )
 
         self.particle_systems["3"] = ParticleSystem(
@@ -37,6 +39,7 @@ class Model:
             direction=(0, -1, 0),
             particle_type=ParticleSystem.OIL,
             count=particle_count,
+            render_points_as_spheres=render_points_as_spheres,
         )
 
         self.particle_systems["4"] = ParticleSystem(
@@ -45,6 +48,7 @@ class Model:
             direction=(0, 1, 0),
             particle_type=ParticleSystem.GAS,
             count=particle_count,
+            render_points_as_spheres=render_points_as_spheres,
         )
 
         self.particle_systems["5"] = ParticleSystem(
@@ -53,6 +57,7 @@ class Model:
             direction=(-1, 0, 0),
             particle_type=ParticleSystem.GAS,
             count=particle_count,
+            render_points_as_spheres=render_points_as_spheres,
         )
 
         self.particle_systems["6"] = ParticleSystem(
@@ -61,6 +66,7 @@ class Model:
             direction=(-1, 0, 0),
             particle_type=ParticleSystem.GAS,
             count=particle_count,
+            render_points_as_spheres=render_points_as_spheres,
         )
 
     # ========================

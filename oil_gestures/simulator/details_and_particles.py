@@ -283,7 +283,8 @@ class ParticleSystem:
     OIL = "oil"
     GAS = "gas"
 
-    def __init__(self, plotter, position, direction=(0, 1, 0), particle_type=OIL, count=760):
+    def __init__(self, plotter, position, direction=(0, 1, 0), particle_type=OIL, count=760,
+                 render_points_as_spheres=True):
         self.plotter = plotter
         self.position = np.array(position, dtype=float)
         self.direction = np.array(direction, dtype=float)
@@ -314,9 +315,12 @@ class ParticleSystem:
         self._velocities = np.zeros((count, 3))
         self._lifetimes = np.random.uniform(0, 2.0, count)
         self._mesh = pv.PolyData(self._positions)
+        # render_points_as_spheres использует шейдер точек-сфер; на некоторых
+        # Windows/GPU контекстах он не компилируется (частицы не видно). Флаг
+        # позволяет откатиться на плоские точки (базовый GL) - см. RenderProfile.
         self._actor = plotter.add_mesh(
             self._mesh, color=self._color, point_size=5,
-            render_points_as_spheres=True, opacity=self._opacity
+            render_points_as_spheres=render_points_as_spheres, opacity=self._opacity
         )
 
     def start(self):

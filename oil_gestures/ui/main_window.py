@@ -33,6 +33,7 @@ class MainWindow(QMainWindow):
             self.scene.plotter,
             "assets/ui/scene/model.glb",
             particle_count=self.scene.profile.particle_count,
+            render_points_as_spheres=self.scene.profile.point_spheres,
         )
 
         self.panel = ControlPanel()
