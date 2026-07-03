@@ -55,6 +55,7 @@ if _system == "Linux" and os.path.exists("/proc/driver/nvidia"):
 elif _system == "Windows" and shutil.which("nvidia-smi"):
     # Windows: nvidia-smi ставится вместе с драйвером NVIDIA -> дискретка есть.
     # Прописываем предпочтение High performance для текущего python.exe.
+    os.environ.setdefault("__OIL_POINT_SPHERES", "0")
     if _prefer_nvidia_on_windows(sys.executable):
         _gpu_mode = "NVIDIA (High performance в реестре Windows)"
 
