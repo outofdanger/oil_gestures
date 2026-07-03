@@ -1,7 +1,10 @@
 import numpy as np
 import pyvista as pv
+import vtk
 from PySide6.QtGui import QImage, QPainter, QColor, QPen, QFont
 from PySide6.QtCore import Qt
+
+
 # ========================
 # БАЗОВАЯ ДЕТАЛЬ
 # ========================
@@ -54,6 +57,8 @@ class Detail:
     def set_color(self, color):
         rgb = pv.Color(color).float_rgb
         self.actor.GetProperty().SetColor(*rgb)
+
+
 # ========================
 # ВЕНТИЛЬ
 # ========================
@@ -89,7 +94,7 @@ class Valve(Detail):
             self._rotating = True
             self._opened = False
             self._closed = True
-    
+
     def set_position(self, percent):
         target_angle = self._max * (percent / 100)
         self._target = target_angle
@@ -152,15 +157,15 @@ class Valve(Detail):
 
 class Flap(Detail):
     def __init__(
-        self,
-        mesh,
-        actor,
-        name,
-        color=None,
-        hinge_point=None,
-        air_jet=None,
-        jet_origin=None,
-        jet_direction=None,
+            self,
+            mesh,
+            actor,
+            name,
+            color=None,
+            hinge_point=None,
+            air_jet=None,
+            jet_origin=None,
+            jet_direction=None,
     ):
         super().__init__(mesh, actor, name)
         self._animating = False
@@ -266,6 +271,8 @@ class Flap(Detail):
                 self._rotate_to(0.0)
                 self._animating = False
                 self._phase = "idle"
+
+
 # ========================
 # ЗАГЛУШКА
 # ========================
@@ -404,6 +411,7 @@ class Body(Detail):
         super().__init__(mesh, actor, name, axis)
         self.highlightable = False
 
+
 class LevelGaugeScreen(Detail):
     def __init__(self, mesh, actor, name, plotter, color=None):
         super().__init__(mesh, actor, name)
@@ -535,6 +543,7 @@ class LevelGaugeScreen(Detail):
         if self._screen_plane_actor:
             self._screen_plane_actor.VisibilityOff()
 
+
 class LevelGaugeCover(Detail):
     """
     Крышка уровнемера — открывается/закрывается по ЛКМ.
@@ -557,7 +566,7 @@ class LevelGaugeCover(Detail):
         # Точка вращения берётся по переднему краю (z_max) верхнего ребра
         self._hinge_point = (
             (b[0] + b[1]) / 2,
-            b[2],                  # y_max — верхний край, он неподвижен
+            b[2],  # y_max — верхний край, он неподвижен
             (b[4]),
         )
         # Ось Z: крышка поворачивается вперёд/назад относительно верхнего края
@@ -621,19 +630,20 @@ class LevelGaugeCover(Detail):
         self.actor.GetMapper().SetInputData(self.mesh)
         self._angle += step
 
+
 class TexturedButton(Detail):
     def __init__(
-        self,
-        mesh,
-        actor,
-        name,
-        plotter,
-        label="MODE",
-        bg_color=(190, 190, 190, 255),
-        text_color=(20, 20, 20, 255),
-        border_color=(110, 110, 110, 255),
-        font_family="Arial",
-        font_scale=0.2,
+            self,
+            mesh,
+            actor,
+            name,
+            plotter,
+            label="MODE",
+            bg_color=(190, 190, 190, 255),
+            text_color=(20, 20, 20, 255),
+            border_color=(110, 110, 110, 255),
+            font_family="Arial",
+            font_scale=0.2,
     ):
         super().__init__(mesh, actor, name)
         self.plotter = plotter
@@ -723,6 +733,8 @@ class TexturedButton(Detail):
         super().hide()
         if self.texture_actor is not None:
             self.texture_actor.VisibilityOff()
+
+
 # ========================
 # СБОРКА УРОВНЕМЕРА
 # ========================
@@ -798,6 +810,8 @@ class LevelGaugeAssembly:
 
     def unhighlight(self):
         pass
+
+
 # ========================
 # ЧАСТИЦЫ
 # ========================
@@ -825,13 +839,33 @@ class ParticleSystem:
         self._frame_counter = 0
 
         if particle_type == self.OIL:
-            self._color = "black"
-            self._opacity = 0.64
-            self._gravity = np.array([0, -5, 0])
-            self._lifetime_min = 0.9
-            self._lifetime_max = 1.4
-            self._speed_min = 1.9
-            self._speed_max = 3.1
+            # Нефть: не чистый чёрный, а тёмный коричнево-оливковый —
+            # так блик на поверхности выглядит контрастнее и реалистичнее
+            self._color = (0.03, 0.02, 0.015)
+            self._opacity = 0.92
+            self._gravity = np.array([0, -3.0, 0])
+            self._lifetime_min = 1.5
+            self._lifetime_max = 2.5
+            self._speed_min = 1.2
+            self._speed_max = 2.5
+            # база для размера блика (см. ниже) — крупнее, чем раньше,
+            # чтобы блик оставался заметным на увеличенных каплях
+            self._base_point_size = 16.0
+            self._min_point_size = 12.0
+            self._max_point_size = 22.0
+            self._glare_base_opacity = 0.0
+            self._glare_flicker_timer = 0.0
+            # Реальный физический размер капли в единицах сцены (не пиксели!).
+            # Увеличен в несколько раз, чтобы капли перекрывали друг друга
+            # и читались как единая жидкость, а не отдельные точки.
+            # Подберите под масштаб вашей модели.
+            self._droplet_world_size = 0.06
+            # Пересборка мешей капель (vtkGlyph3D) — самая дорогая операция
+            # в tick(). 1 = каждый кадр (максимально плавно, но дороже всего).
+            # 2-3 = обновлять раз в 2-3 кадра — заметно снижает нагрузку
+            # на CPU/GPU почти без потери плавности на глаз.
+            self._glyph_update_every = 2
+            self._glyph_frame_counter = 0
         elif particle_type == self.AIR_BLAST:
             self._color = "white"
             self._opacity = 0.25
@@ -840,59 +874,190 @@ class ParticleSystem:
             self._lifetime_min = 0.60
             self._lifetime_max = 1.00
             self._gravity = np.array([0.0, -0.2, 0.0])
-        else:
-            self._color = "lightgray"
-            self._opacity = 0.17
-            self._gravity = np.array([0, -2.8, 0])
-            self._lifetime_min = 0.1
-            self._lifetime_max = 0.7
-            self._speed_min = 3.4
-            self._speed_max = 5.6
+            self._base_point_size = 8.0
+            self._min_point_size = 6.0
+            self._max_point_size = 18.0
+        else:  # GAS
+            self._color = (0.85, 0.85, 0.85)  # светло-серый
+            self._opacity = 0.15
+            self._gravity = np.array([0, -0.3, 0])
+            self._lifetime_min = 0.3
+            self._lifetime_max = 1.0
+            self._speed_min = 5.0
+            self._speed_max = 9.0
+            self._base_point_size = 4.0
+            self._min_point_size = 2.0
+            self._max_point_size = 8.0
 
         self._positions = np.tile(self.position, (count, 1))
         self._velocities = np.zeros((count, 3))
         self._lifetimes = np.random.uniform(0, 2.0, count)
         self._mesh = pv.PolyData(self._positions)
-        self._actor = plotter.add_mesh(
-            self._mesh,
-            color=self._color,
-            point_size=self._base_point_size,
-            render_points_as_spheres=True,
-            opacity=self._opacity
-        )
+
+        if particle_type == self.OIL:
+            # Небольшой случайный разброс цвета/яркости по каждой капле —
+            # однородный цвет по всей массе точек выдаёт "частицы",
+            # а лёгкая неоднородность делает жидкость правдоподобнее
+            base = np.array(self._color)
+            variation = np.random.uniform(0.7, 1.3, (count, 1))
+            per_point_colors = np.clip(base * variation, 0.0, 1.0)
+            self._mesh["oil_colors"] = per_point_colors
+
+            # Форма капли (не сфера): округлый "нос" по направлению падения
+            # и заострённый "хвост" сзади — ориентируется по вектору скорости.
+            # Уже/тоньше, чем раньше (меньше радиус относительно длины) —
+            # такая пропорция сильнее читается как жидкая капля, а не шарик
+            self._droplet_template = self._build_droplet_template(length=1.3, max_radius=0.4)
+            self._droplet_scale_base = np.random.uniform(1.0, 1.7, count)
+            self._mesh["droplet_scale"] = self._droplet_scale_base.copy()
+            # изначально капли "смотрят" вниз, пока не появится скорость
+            self._mesh["velocity_dir"] = np.tile([0.0, -1.0, 0.0], (count, 1))
+            self._mesh.set_active_scalars("droplet_scale")
+            self._mesh.set_active_vectors("velocity_dir")
+
+            self._glyph_filter = vtk.vtkGlyph3D()
+            self._glyph_filter.SetSourceData(self._droplet_template)
+            self._glyph_filter.SetInputData(self._mesh)
+            self._glyph_filter.OrientOn()
+            self._glyph_filter.SetVectorModeToUseVector()
+            self._glyph_filter.SetScaleModeToScaleByScalar()
+            self._glyph_filter.SetScaleFactor(self._droplet_world_size)
+            self._glyph_filter.Update()
+
+            self._actor = plotter.add_mesh(
+                pv.wrap(self._glyph_filter.GetOutput()),
+                scalars="oil_colors",
+                rgb=True,
+                opacity=self._opacity,
+                lighting=True,
+                smooth_shading=True,
+            )
+        else:
+            self._actor = plotter.add_mesh(
+                self._mesh,
+                color=self._color,
+                point_size=self._base_point_size,
+                render_points_as_spheres=True,
+                opacity=self._opacity,
+                lighting=True,
+                smooth_shading=True,
+            )
         self._actor.VisibilityOff()
 
-    def _update_point_size_by_camera(self):
-        camera = getattr(self.plotter, "camera", None)
-        if camera is None:
+        # Настройка материала для блеска (особенно для нефти)
+        prop = self._actor.GetProperty()
+        if self._type == self.OIL:
+            # PBR даёт куда более честный, "мокрый" блик, чем классический
+            # Phong-specular, при этом резкость блика задаёт Roughness,
+            # а не только SpecularPower. Для полного эффекта в сцене должна
+            # быть задана environment texture, см. _apply_oil_environment().
+            # Roughness понижен — чем он ближе к 0, тем более зеркальным
+            # и резким выглядит блик (0.3–0.4 дало бы более матовую нефть)
+            prop.SetInterpolationToPBR()
+            prop.SetMetallic(0.0)
+            prop.SetRoughness(0.06)
+            prop.SetSpecular(1.0)
+            prop.SetSpecularColor(1.0, 1.0, 1.0)
+            prop.SetDiffuse(0.5)
+        else:
+            prop.SetSpecular(0.1)
+            prop.SetSpecularPower(5)
+            prop.SetDiffuse(0.8)
+
+        # Второй, "бликующий" слой поверх тех же точек: маленькие, очень
+        # яркие спрайты без освещения — имитируют резкий солнечный/студийный
+        # блик на поверхности капли, который PBR один не всегда красиво
+        # даёт на мелких сферах. По умолчанию невидим (opacity=0),
+        # включается мерцанием в tick().
+        self._glare_actor = None
+        if particle_type == self.OIL:
+            self._glare_actor = plotter.add_mesh(
+                self._mesh,
+                color=(1.0, 1.0, 1.0),
+                point_size=self._base_point_size * 0.35,
+                render_points_as_spheres=True,
+                opacity=0.0,
+                lighting=False,
+            )
+            self._glare_actor.VisibilityOff()
+
+    def _build_droplet_template(self, length=1.0, max_radius=0.45, resolution=6):
+        """
+        Строит меш капли как поверхность вращения профиля вокруг оси X:
+        узкий заострённый "хвост" при x=0 и округлый "нос" при x=length.
+        vtkGlyph3D по умолчанию ориентирует источник так, что его локальная
+        ось X совпадает с вектором (в нашем случае — с вектором скорости),
+        поэтому "нос" капли будет направлен вперёд по движению, а "хвост"
+        останется вытянутым позади — как у настоящей падающей капли.
+
+        ВАЖНО ДЛЯ ПРОИЗВОДИТЕЛЬНОСТИ: этот меш перестраивается через
+        vtkGlyph3D на КАЖДОЙ капле КАЖДЫЙ кадр (см. tick()), поэтому число
+        точек профиля и resolution напрямую умножаются на количество
+        частиц — при 500 каплях даже небольшое увеличение здесь ощутимо
+        нагружает CPU/GPU. Текущие значения — компромисс между "видно, что
+        это капля" и низкой нагрузкой; поднимайте resolution только если
+        точно есть запас по производительности.
+        """
+        neck = length * 0.55
+        n_tail, n_nose = 5, 5
+
+        x_tail = np.linspace(0.0, neck, n_tail)
+        r_tail = max_radius * (x_tail / neck)
+
+        x_nose = np.linspace(neck, length, n_nose)[1:]
+        t = (x_nose - neck) / (length - neck)
+        r_nose = max_radius * np.sqrt(np.clip(1.0 - t ** 2, 0.0, 1.0))
+
+        x = np.concatenate([x_tail, x_nose])
+        r = np.concatenate([r_tail, r_nose])
+        r[0] = 0.0
+        r[-1] = 0.0
+
+        profile_points = np.column_stack([x, r, np.zeros_like(r)])
+        n = len(profile_points)
+        profile = pv.PolyData(profile_points)
+        profile.lines = np.hstack([[n], np.arange(n)])
+
+        droplet = profile.extrude_rotate(resolution=resolution, capping=True, rotation_axis=(1, 0, 0))
+        droplet.translate([-length / 2.0, 0.0, 0.0], inplace=True)
+        droplet.compute_normals(auto_orient_normals=True, inplace=True)
+        return droplet
+
+    def apply_oil_environment(self, cubemap=None):
+        """
+        PBR-материал нефти (Metallic/Roughness) даёт по-настоящему
+        реалистичный блик только тогда, когда у рендерера есть environment
+        texture — иначе блики будут почти незаметны, т.к. PBR освещает
+        поверхность отражением окружения, а не только точечными источниками.
+
+        Вызвать один раз после создания плоттера, например:
+            oil_system.apply_oil_environment()
+        или передать свой кубмап:
+            cubemap = pv.cubemap(path="assets/skybox")  # 6 картинок
+            oil_system.apply_oil_environment(cubemap)
+        """
+        if self._type != self.OIL:
             return
-
-        cam_pos = np.array(camera.position, dtype=float)
-        center = self._positions.mean(axis=0)
-        distance = np.linalg.norm(cam_pos - center)
-
-        if distance < 1e-6:
-            return
-
-        if self._reference_distance is None:
-            self._reference_distance = distance
-
-        scale = self._reference_distance / distance
-        new_size = self._base_point_size * scale
-        new_size = max(self._min_point_size, min(self._max_point_size, new_size))
-
-        self._actor.GetProperty().SetPointSize(new_size)
+        if cubemap is None:
+            cubemap = pv.examples.download_sky_box_cube_map()
+        self.plotter.set_environment_texture(cubemap)
 
     def show(self):
         self._actor.VisibilityOn()
+        if self._glare_actor is not None:
+            self._glare_actor.VisibilityOn()
 
     def hide(self):
         self._actor.VisibilityOff()
+        if self._glare_actor is not None:
+            self._glare_actor.VisibilityOff()
 
     def start(self):
         self._active = True
         self._lifetimes = np.random.uniform(0, self._lifetime_max, self._count)
         self._actor.VisibilityOn()
+        if self._glare_actor is not None:
+            self._glare_actor.VisibilityOn()
 
     def stop(self):
         self._active = False
@@ -900,51 +1065,142 @@ class ParticleSystem:
         self._velocities[:] = 0
         self._lifetimes[:] = 0
         self._mesh.points = self._positions
-        self._actor.GetMapper().SetInputData(self._mesh)
+        if self._type == self.OIL:
+            self._mesh["droplet_scale"] = np.zeros(self._count)
+            self._glyph_filter.Update()
+            self._actor.GetMapper().SetInputData(self._glyph_filter.GetOutput())
+        else:
+            self._actor.GetMapper().SetInputData(self._mesh)
         self._actor.VisibilityOff()
-    
+        if self._glare_actor is not None:
+            self._glare_actor.GetMapper().SetInputData(self._mesh)
+            self._glare_actor.GetProperty().SetOpacity(0.0)
+            self._glare_actor.VisibilityOff()
+
     def set_intensity(self, percent):
         percent = max(5, min(100, percent))
         self._active_count = int(self._base_count * percent / 100)
+
+    def _update_point_size_by_camera(self):
+        camera = getattr(self.plotter, "camera", None)
+        if camera is None:
+            return
+        cam_pos = np.array(camera.position, dtype=float)
+        center = self._positions.mean(axis=0)
+        distance = np.linalg.norm(cam_pos - center)
+        if distance < 1e-6:
+            return
+        if self._reference_distance is None:
+            self._reference_distance = distance
+        scale = self._reference_distance / distance
+        new_size = self._base_point_size * scale
+        new_size = max(self._min_point_size, min(self._max_point_size, new_size))
+
+        if self._type != self.OIL:
+            # Капли-нефть теперь реальная геометрия в мировых единицах, а не
+            # экранные point-спрайты — её масштабировать по камере не нужно,
+            # перспектива и так делает объекты меньше на расстоянии.
+            self._actor.GetProperty().SetPointSize(new_size)
+
+        if self._glare_actor is not None:
+            self._glare_actor.GetProperty().SetPointSize(new_size * 0.35)
 
     def tick(self, dt=0.016):
         if not self._active:
             return
 
-        for i in range(self._count):
-            if i >= self._active_count:
-                self._lifetimes[i] = 0
-                self._positions[i] = self.position.copy()
-                self._velocities[i] = 0
-                continue
-            if self._lifetimes[i] <= 0:
-                if self._type == self.AIR_BLAST:
-                    angle1 = np.random.uniform(0, np.pi / 120)
-                else:
-                    angle1 = np.random.uniform(0, np.pi / 12)
+        n = self._count
+        idx = np.arange(n)
+        active_mask = idx < self._active_count
+        inactive_mask = ~active_mask
 
-                angle2 = np.random.uniform(0, 2 * np.pi)
-                dir_rotated = self._rotate_cone(self.direction, angle1, angle2)
-                speed = np.random.uniform(self._speed_min, self._speed_max)
-                self._positions[i] = self.position.copy()
-                if self._positions[i][1] < 0.0:
-                    self._positions[i][1] = 0.0
-                self._velocities[i] = dir_rotated * speed
-                self._lifetimes[i] = np.random.uniform(self._lifetime_min, self._lifetime_max)
+        # частицы вне текущей интенсивности — держим "свёрнутыми" в источнике
+        if inactive_mask.any():
+            self._lifetimes[inactive_mask] = 0
+            self._positions[inactive_mask] = self.position
+            self._velocities[inactive_mask] = 0
+
+        respawn_mask = active_mask & (self._lifetimes <= 0)
+        n_respawn = int(respawn_mask.sum())
+        if n_respawn:
+            if self._type == self.AIR_BLAST:
+                angle1 = np.random.uniform(0, np.pi / 120, n_respawn)
             else:
-                if self._type != self.AIR_BLAST and np.linalg.norm(self._velocities[i]) < 1e-9:
-                    self._lifetimes[i] -= dt
-                    continue
-                self._velocities[i] += self._gravity * dt
-                new_pos = self._positions[i] + self._velocities[i] * dt
-                if new_pos[1] < 0.0:
-                    new_pos[1] = 0.0
-                    self._velocities[i][1] = 0.0
-                self._positions[i] = new_pos
-                self._lifetimes[i] -= dt
+                angle1 = np.random.uniform(0, np.pi / 12, n_respawn)
+            angle2 = np.random.uniform(0, 2 * np.pi, n_respawn)
+            dirs = self._rotate_cone_batch(angle1, angle2)
+            speeds = np.random.uniform(self._speed_min, self._speed_max, n_respawn)
+
+            new_pos = np.tile(self.position, (n_respawn, 1))
+            new_pos[:, 1] = np.maximum(new_pos[:, 1], 0.0)
+            self._positions[respawn_mask] = new_pos
+            self._velocities[respawn_mask] = dirs * speeds[:, None]
+            self._lifetimes[respawn_mask] = np.random.uniform(
+                self._lifetime_min, self._lifetime_max, n_respawn
+            )
+
+        alive_mask = active_mask & ~respawn_mask
+        if alive_mask.any():
+            moving_mask = alive_mask
+            if self._type != self.AIR_BLAST:
+                speeds_now = np.linalg.norm(self._velocities, axis=1)
+                stuck_mask = alive_mask & (speeds_now < 1e-9)
+                if stuck_mask.any():
+                    self._lifetimes[stuck_mask] -= dt
+                moving_mask = alive_mask & ~stuck_mask
+
+            if moving_mask.any():
+                self._velocities[moving_mask] += self._gravity * dt
+                new_pos = self._positions[moving_mask] + self._velocities[moving_mask] * dt
+                floor_hit = new_pos[:, 1] < 0.0
+                new_pos[floor_hit, 1] = 0.0
+                vel_slice = self._velocities[moving_mask]
+                vel_slice[floor_hit, 1] = 0.0
+                self._velocities[moving_mask] = vel_slice
+                self._positions[moving_mask] = new_pos
+                self._lifetimes[moving_mask] -= dt
 
         self._mesh.points = self._positions
-        self._actor.GetMapper().SetInputData(self._mesh)
+
+        if self._type == self.OIL:
+            # Ориентируем каждую каплю по направлению её текущей скорости
+            # (vtkGlyph3D совмещает локальную ось X шаблона с этим вектором),
+            # у только что заспавненных/зависших капель скорость нулевая —
+            # подставляем направление "вниз", чтобы не было вырожденного вектора
+            speeds = np.linalg.norm(self._velocities, axis=1, keepdims=True)
+            dirs = np.divide(
+                self._velocities, speeds,
+                out=np.tile([0.0, -1.0, 0.0], (self._count, 1)),
+                where=speeds > 1e-6,
+            )
+            self._mesh["velocity_dir"] = dirs
+
+            # Капли за пределами текущей интенсивности (active_count) прячем
+            # через нулевой масштаб, а не оставляем "слипшимися" в источнике
+            scales = self._droplet_scale_base.copy()
+            scales[self._active_count:] = 0.0
+            self._mesh["droplet_scale"] = scales
+
+            # Самая тяжёлая часть — пересборка треугольной геометрии капель.
+            # Делаем это не каждый кадр, а раз в _glyph_update_every кадров
+            self._glyph_frame_counter += 1
+            if self._glyph_frame_counter >= self._glyph_update_every:
+                self._glyph_frame_counter = 0
+                self._glyph_filter.Update()
+                self._actor.GetMapper().SetInputData(self._glyph_filter.GetOutput())
+        else:
+            self._actor.GetMapper().SetInputData(self._mesh)
+
+        if self._glare_actor is not None:
+            self._glare_actor.GetMapper().SetInputData(self._mesh)
+            # Мерцание блика: случайно "вспыхивает" и гаснет, как солнечный
+            # зайчик на поверхности движущихся капель, а не статичная точка
+            self._glare_flicker_timer -= dt
+            if self._glare_flicker_timer <= 0.0:
+                self._glare_base_opacity = np.random.uniform(0.0, 0.7)
+                self._glare_flicker_timer = np.random.uniform(0.05, 0.15)
+            self._glare_actor.GetProperty().SetOpacity(self._glare_base_opacity)
+
         self._frame_counter += 1
         if self._frame_counter == 10:
             self._frame_counter = 0
@@ -956,16 +1212,40 @@ class ParticleSystem:
         else:
             perp = np.array([-v[2], 0, v[0]])
         perp = perp / np.linalg.norm(perp)
-
         v = self._rot(v, perp, angle1)
         v = self._rot(v, np.array(self.direction), angle2)
         return v
+
+    def _rotate_cone_batch(self, angle1, angle2):
+        """
+        Векторизованная версия _rotate_cone: считает направления сразу для
+        массива частиц (angle1/angle2 — массивы одинаковой длины), без
+        Python-цикла. self.direction — общая константа для всех частиц.
+        """
+        v = np.asarray(self.direction, dtype=float)
+        if abs(v[0]) < 0.001 and abs(v[2]) < 0.001:
+            perp = np.array([1.0, 0.0, 0.0])
+        else:
+            perp = np.array([-v[2], 0.0, v[0]])
+        perp = perp / np.linalg.norm(perp)
+
+        cos1 = np.cos(angle1)[:, None]
+        sin1 = np.sin(angle1)[:, None]
+        v1 = v * cos1 + np.cross(perp, v) * sin1 + perp * np.dot(perp, v) * (1 - cos1)
+
+        axis2 = v / np.linalg.norm(v)
+        cos2 = np.cos(angle2)[:, None]
+        sin2 = np.sin(angle2)[:, None]
+        dot2 = (v1 * axis2).sum(axis=1, keepdims=True)
+        v2 = v1 * cos2 + np.cross(axis2, v1) * sin2 + axis2 * dot2 * (1 - cos2)
+        return v2
 
     def _rot(self, v, axis, angle):
         axis = axis / np.linalg.norm(axis)
         cos_a = np.cos(angle)
         sin_a = np.sin(angle)
         return v * cos_a + np.cross(axis, v) * sin_a + axis * np.dot(axis, v) * (1 - cos_a)
+
 
 class ControllerDoor(Detail):
     def __init__(self, mesh, actor, name, color=None, hinge_point=None):
@@ -1038,6 +1318,7 @@ class ControllerDoor(Detail):
         self.actor.GetMapper().SetInputData(self.mesh)
         self._angle = target_angle
 
+
 class ControllerLever(Detail):
     def __init__(self, mesh, actor, name, color=None, pivot_point=None):
         super().__init__(mesh, actor, name, color)
@@ -1097,12 +1378,12 @@ class ControllerLever(Detail):
         self.actor.GetMapper().SetInputData(self.mesh)
         self._angle = target_angle
 
+
 class ControllerScreen(LevelGaugeScreen):
     def __init__(self, mesh, actor, name, plotter, color=None):
         super().__init__(mesh, actor, name, plotter, color)
         self._font_scale = 0.5
         self.render_lines(["КОНТРОЛЛЕР", "", "ПИТАНИЕ: ВЫКЛ"])
-
 
     def _build_plane(self):
         b = self.mesh.bounds
