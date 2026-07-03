@@ -15,13 +15,14 @@ class LevelGaugeUIState:
         self.current_screen = "home"
         self.results = [
             "Уровень: 1200 м",
-            "Давление: 8.2 МПа",
+            "Давление: --",
             "Статус: норма",
         ]
         self.result_index = 0
         self._level_measured = False
         self._pressure_measured = False
         self._last_level_m = None  # сохранённое значение последнего измерения
+        self._last_pressure_mpa = 0.0
 
     def press_mode(self):
         if self.current_screen == "home":
@@ -61,6 +62,13 @@ class LevelGaugeUIState:
         self._last_level_m = random.randint(1000, 1200)
         self._level_measured = True
 
+    def set_pressure_mpa(self, pressure):
+        pressure = max(0.0, min(12.0, round(pressure, 1)))
+        if abs(self._last_pressure_mpa - pressure) < 0.05:
+            return False
+        self._last_pressure_mpa = pressure
+        return True
+
     def press_return(self):
         self.current_screen = "home"
 
@@ -90,7 +98,7 @@ class LevelGaugeUIState:
         if self.current_screen == "measure_pressure":
             lines = ["ИЗМЕРЕНИЕ ДАВЛЕНИЯ", "", "Текущее давление:"]
             if self._pressure_measured:
-                lines.append("8.2 МПа")
+                lines.append(f"{self._last_pressure_mpa:.1f} МПа")
             else:
                 lines.append("--")
             return lines
@@ -99,7 +107,7 @@ class LevelGaugeUIState:
             level_str = f"{self._last_level_m} м" if self._level_measured and self._last_level_m is not None else "--"
             all_results = [
                 f"Уровень: {level_str}" if self._level_measured else "Уровень: --",
-                "Давление: 8.2 МПа" if self._pressure_measured else "Давление: --",
+                f"Давление: {self._last_pressure_mpa:.1f} МПа" if self._pressure_measured else "Давление: --",
                 "Статус: норма",
             ]
             return [

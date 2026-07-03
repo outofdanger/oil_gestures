@@ -28,6 +28,7 @@ CONTROLLER_CONFIG = {
     "file": "assets/controller.glb",
     "offset": (8.0, -1, 0.0),
     "rotation_y": 0.0,
+    "scale": 1.2,
     "parts": {
         0: ("controller_door", "silver"),
         1: ("controller_screen", "#1d2a1d"),
@@ -167,6 +168,20 @@ def load_controller(plotter, details, base_offset):
         })
 
     all_bounds = merge_bounds([p["mesh"] for p in prepared_parts])
+    scale = CONTROLLER_CONFIG.get("scale", 1.0)
+    if scale != 1.0:
+        scale_origin = (
+            (all_bounds[0] + all_bounds[1]) / 2,
+            all_bounds[2],
+            (all_bounds[4] + all_bounds[5]) / 2,
+        )
+        for part in prepared_parts:
+            mesh = part["mesh"]
+            mesh.translate((-scale_origin[0], -scale_origin[1], -scale_origin[2]), inplace=True)
+            mesh.scale([scale, scale, scale], inplace=True)
+            mesh.translate(scale_origin, inplace=True)
+        all_bounds = merge_bounds([p["mesh"] for p in prepared_parts])
+
     center = bounds_center(all_bounds)
 
     rotation_y = CONTROLLER_CONFIG["rotation_y"]

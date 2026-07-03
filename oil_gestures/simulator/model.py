@@ -302,6 +302,10 @@ class Model:
             self.level_gauge_assembly is not None and
             self.level_gauge_assembly.state == "attached"
         )
+        system_running = self.controller_ui.power_on and self.controller_ui.running
+        target_pressure = min(self.controller_ui.pressure, self.SYSTEM_MAX_MPA)
+        controller_pressure = 0.0
+        level_gauge_pressure = 0.0
 
         for key, config in self.chains.items():
             min_percent = 100
@@ -314,24 +318,30 @@ class Model:
             ps = self.particle_systems.get(key)
             m_name = config.get("blocker")
             m = self.get_by_name(m_name) if m_name else None
+            actual_pressure = target_pressure * min_percent / 100 if system_running else 0.0
+            controller_pressure = max(controller_pressure, actual_pressure)
 
-            # Всегда обновляем манометр
-            if m and m.state == "attached":
-                if hasattr(m, 'set_pressure_mpa'):
-                    m.set_pressure_mpa(min_percent * self.SYSTEM_MAX_MPA / 100)
-            else:
-                if m and hasattr(m, 'set_pressure_mpa'):
+            if key == "5" and level_gauge_attached:
+                level_gauge_pressure = actual_pressure
+
+            if m and hasattr(m, "set_pressure_mpa"):
+                if system_running and getattr(m, "state", None) == "attached":
+                    m.set_pressure_mpa(actual_pressure)
+                else:
                     m.set_pressure_mpa(0)
 
-            # Управление частицами
+            if not system_running:
+                if ps:
+                    ps.stop()
+                continue
+
             # Если это цепочка с заглушкой (ключ "5") и уровнемер установлен -> стоп
             if key == "5" and level_gauge_attached:
                 if ps:
                     ps.stop()
                 continue
 
-            # Иначе стандартная логика
-            if m and m.state == "attached":
+            if m and getattr(m, "state", None) == "attached":
                 if ps:
                     ps.stop()
             else:
@@ -343,6 +353,17 @@ class Model:
                     else:
                         ps.stop()
 
+        controller_changed = False
+        if hasattr(self.controller_ui, "set_actual_pressure_mpa"):
+            controller_changed = self.controller_ui.set_actual_pressure_mpa(controller_pressure)
+        if controller_changed:
+            self.update_controller_screen()
+
+        level_changed = False
+        if hasattr(self.level_gauge_ui, "set_pressure_mpa"):
+            level_changed = self.level_gauge_ui.set_pressure_mpa(level_gauge_pressure)
+        if level_changed:
+            self.update_level_gauge_screen()
 
 
     def get_inventory(self):

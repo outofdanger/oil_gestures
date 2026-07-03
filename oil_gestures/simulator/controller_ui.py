@@ -18,6 +18,7 @@ class ControllerUIState:
         self.current_amp = 21
         self.voltage = 380
         self.pressure = 8.2
+        self.actual_pressure = 0.0
         self.frequency = 50
         self.cosfi = 0.85
 
@@ -165,6 +166,13 @@ class ControllerUIState:
         self.pressure = max(0.0, round(self.pressure - 0.2, 1))
         self.current_screen = "data"
         self.status = "ДЕБИТ ПОНИЖЕН"
+        return True
+
+    def set_actual_pressure_mpa(self, pressure):
+        pressure = max(0.0, min(12.0, round(pressure, 1)))
+        if abs(self.actual_pressure - pressure) < 0.05:
+            return False
+        self.actual_pressure = pressure
         return True
 
     def _menu_lines(self):
