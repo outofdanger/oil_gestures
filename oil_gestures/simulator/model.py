@@ -1,8 +1,7 @@
 from oil_gestures.simulator.model_loader import load_model
-from oil_gestures.simulator.details_and_particles import ParticleSystem, Manometer
+from oil_gestures.simulator.details_and_particles import ParticleSystem, Manometer, LevelGaugeAssembly
 from oil_gestures.simulator.level_gauge_ui import LevelGaugeUIState
 from oil_gestures.simulator.controller_ui import ControllerUIState
-from oil_gestures.simulator.details_and_particles import LevelGaugeAssembly
 
 class Model:
     def __init__(self, plotter, filepath):
@@ -16,10 +15,7 @@ class Model:
         self.controller_ui = ControllerUIState()
         self.controller_screen = None
         self.level_gauge_assembly = None
-        for d in self.details:
-            if isinstance(d, LevelGaugeAssembly) and d.name == "level_gauge":
-                self.level_gauge_assembly = d
-                break
+
         for d in self.details:
             if isinstance(d, Manometer):
                 d.create_gauge(plotter)
@@ -27,12 +23,10 @@ class Model:
         for d in self.details:
             if getattr(d, "name", None) == "level_gauge_screen":
                 self.level_gauge_screen = d
-                break
-
-        for d in self.details:
-            if getattr(d, "name", None) == "controller_screen":
+            elif isinstance(d, LevelGaugeAssembly) and d.name == "level_gauge":
+                self.level_gauge_assembly = d
+            elif getattr(d, "name", None) == "controller_screen":
                 self.controller_screen = d
-                break
 
         if self.level_gauge_screen is not None:
             self.level_gauge_screen.render_lines(self.level_gauge_ui.get_lines())
@@ -113,7 +107,7 @@ class Model:
         self.chains = CHAINS
 
 
-        self.MANOMETER_MAX_MPA = 12
+        self.SYSTEM_MAX_MPA = 12
 
         # В __init__ после загрузки:
         self._valve_cache = {}
@@ -191,6 +185,58 @@ class Model:
                 ("ℹ ВОЗВРАТ", None),
                 ("• Возвращает на главный экран", None),
             ],
+            "controller_lever_on_off": [
+                ("ℹ ПИТАНИЕ", None),
+                ("• Включает или выключает контроллер", None),
+            ],
+            "controller_start_button": [
+                ("ℹ ПУСК", None),
+                ("• Запускает установку", None),
+            ],
+            "controller_stop_button": [
+                ("ℹ СТОП", None),
+                ("• Останавливает установку", None),
+            ],
+            "controller_button_one": [
+                ("ℹ МЕНЮ", None),
+                ("• Открывает выбор режимов", None),
+            ],
+            "controller_button_top": [
+                ("ℹ СЛЕДУЮЩИЙ", None),
+                ("• Переключает на следующий режим", None),
+            ],
+            "controller_button_right": [
+                ("ℹ СЛЕДУЮЩИЙ", None),
+                ("• Переключает на следующий режим", None),
+            ],
+            "controller_button_lower": [
+                ("ℹ ПРЕДЫДУЩИЙ", None),
+                ("• Переключает на предыдущий режим", None),
+            ],
+            "controller_button_left": [
+                ("ℹ ПРЕДЫДУЩИЙ", None),
+                ("• Переключает на предыдущий режим", None),
+            ],
+            "controller_button_center": [
+                ("ℹ ПОДТВЕРДИТЬ", None),
+                ("• Выполняет выбранный режим", None),
+            ],
+            "controller_button_long": [
+                ("ℹ ВЫХОД В МЕНЮ", None),
+                ("• Возвращает экран к меню режимов", None),
+            ],
+            "controller_button_two": [
+                ("ℹ НЕ НАЗНАЧЕНО", None),
+                ("• Кнопка пока не используется", None),
+            ],
+            "controller_big_button": [
+                ("ℹ НЕ НАЗНАЧЕНО", None),
+                ("• Кнопка пока не используется", None),
+            ],
+            "controller_black_wheel": [
+                ("ℹ НЕ НАЗНАЧЕНО", None),
+                ("• Колесо пока не используется", None),
+            ],
         }
 
         if detail.name in BUTTON_INFO:
@@ -229,9 +275,14 @@ class Model:
     def has_active(self):
         if self._active:
             return True
+
+        if self.controller_ui.power_on and self.controller_ui.running:
+            return True
+
         for ps in self.particle_systems.values():
             if ps._active:
                 return True
+
         return False
 
     def tick(self, dt=0.016):
@@ -247,7 +298,11 @@ class Model:
             if ps._active:
                 ps.tick(dt)
 
-        # Обновить фонтаны по цепочкам вентилей
+        level_gauge_attached = (
+            self.level_gauge_assembly is not None and
+            self.level_gauge_assembly.state == "attached"
+        )
+
         for key, config in self.chains.items():
             min_percent = 100
             for vname in config["valves"]:
@@ -255,23 +310,31 @@ class Model:
                 if valve:
                     percent = (valve._home / valve._max) * 100
                     min_percent = min(min_percent, percent)
-            
+
             ps = self.particle_systems.get(key)
             m_name = config.get("blocker")
             m = self.get_by_name(m_name) if m_name else None
 
-            if self.level_gauge_assembly and self.level_gauge_assembly.state == "attached":
-                for ps in self.particle_systems.values():
-                    ps.stop()
-
+            # Всегда обновляем манометр
             if m and m.state == "attached":
                 if hasattr(m, 'set_pressure_mpa'):
-                    m.set_pressure_mpa(min_percent * self.MANOMETER_MAX_MPA / 100)
-                if ps:
-                    ps.stop()
+                    m.set_pressure_mpa(min_percent * self.SYSTEM_MAX_MPA / 100)
             else:
                 if m and hasattr(m, 'set_pressure_mpa'):
                     m.set_pressure_mpa(0)
+
+            # Управление частицами
+            # Если это цепочка с заглушкой (ключ "5") и уровнемер установлен -> стоп
+            if key == "5" and level_gauge_attached:
+                if ps:
+                    ps.stop()
+                continue
+
+            # Иначе стандартная логика
+            if m and m.state == "attached":
+                if ps:
+                    ps.stop()
+            else:
                 if ps:
                     if min_percent > 0:
                         if not ps._active:
@@ -279,6 +342,7 @@ class Model:
                         ps.set_intensity(min_percent)
                     else:
                         ps.stop()
+
 
 
     def get_inventory(self):
