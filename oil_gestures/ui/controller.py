@@ -527,11 +527,10 @@ class Controller(QObject):
         self.panel.set_message("⚠ АВАРИЙНЫЙ СТОП")
 
     def _on_inventory_click(self, name: str):
-        # Проверка: если пытаются установить уровнемер, а заглушка стоит
+        # Проверка: установка уровнемера при наличии заглушки
         if name == "level_gauge":
             plug = self.model.get_by_name("plug")
             if plug and plug.state == "attached":
-                # Показываем отдельное окно с уведомлением
                 msg_box = QMessageBox()
                 msg_box.setIcon(QMessageBox.Warning)
                 msg_box.setWindowTitle("Невозможно установить")
@@ -540,13 +539,25 @@ class Controller(QObject):
                 msg_box.exec()
                 return
 
+        # Проверка: установка заглушки при установленном уровнемере
+        if name == "plug":
+            level_gauge_assembly = self.model.level_gauge_assembly
+            if level_gauge_assembly and level_gauge_assembly.state == "attached":
+                msg_box = QMessageBox()
+                msg_box.setIcon(QMessageBox.Warning)
+                msg_box.setWindowTitle("Невозможно установить")
+                msg_box.setText("Сначала снимите уровнемер!")
+                msg_box.setStandardButtons(QMessageBox.Ok)
+                msg_box.exec()
+                return
+
+        # Если все проверки пройдены, выполняем установку
         detail = self.model.get_by_name(name)
         if detail and hasattr(detail, "attach"):
             detail.attach()
             self.model._active.discard(detail)
             self.panel.set_inventory(self.model.get_inventory())
             self.panel.set_message(f"{name}: установлен(а)")
-
     def _show_help(self):
         from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel
         
