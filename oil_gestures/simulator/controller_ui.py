@@ -151,7 +151,7 @@ class ControllerUIState:
 
         self.current_amp = min(60, self.current_amp + 1)
         self.frequency = min(60, self.frequency + 1)
-        self.pressure = min(16.0, round(self.pressure + 0.2, 1))
+        self.pressure = min(12.0, round(self.pressure + 0.2, 1))
         self.current_screen = "data"
         self.status = "ДЕБИТ ПОВЫШЕН"
         return True

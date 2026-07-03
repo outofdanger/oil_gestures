@@ -152,6 +152,8 @@ class Controller(QObject):
             self.model.update_controller_screen()
 
             if started:
+                self._start_timer()
+
                 unwork_indicator = self.model.get_by_name("controller_circle_one")
                 work_indicator = self.model.get_by_name("controller_circle_three")
                 if work_indicator:
@@ -173,6 +175,8 @@ class Controller(QObject):
             self.model.update_controller_screen()
 
             if stopped:
+                self._start_timer()
+
                 work_indicator = self.model.get_by_name("controller_circle_three")
                 stop_indicator = self.model.get_by_name("controller_circle_one")
                 if work_indicator:
@@ -220,6 +224,7 @@ class Controller(QObject):
             ok = self.model.controller_ui.press_confirm()
             self.model.update_controller_screen()
             if ok:
+                self._start_timer()
                 self._flash_detail("controller_circle_two", "yellow", 600)
             else:
                 self._flash_detail("controller_circle_five", "red", 1000)
