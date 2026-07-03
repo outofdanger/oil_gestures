@@ -2,6 +2,7 @@ from PySide6.QtCore import QObject, QTimer, Qt, Signal
 from PySide6.QtWidgets import QMenu
 from PySide6.QtGui import QCursor
 from oil_gestures.simulator.details_and_particles import Flap, LevelGaugeCover
+from PySide6.QtWidgets import QMessageBox
 
 class Controller(QObject):
     """
@@ -526,6 +527,19 @@ class Controller(QObject):
         self.panel.set_message("⚠ АВАРИЙНЫЙ СТОП")
 
     def _on_inventory_click(self, name: str):
+        # Проверка: если пытаются установить уровнемер, а заглушка стоит
+        if name == "level_gauge":
+            plug = self.model.get_by_name("plug")
+            if plug and plug.state == "attached":
+                # Показываем отдельное окно с уведомлением
+                msg_box = QMessageBox()
+                msg_box.setIcon(QMessageBox.Warning)
+                msg_box.setWindowTitle("Невозможно установить")
+                msg_box.setText("Сначала снимите заглушку!")
+                msg_box.setStandardButtons(QMessageBox.Ok)
+                msg_box.exec()
+                return
+
         detail = self.model.get_by_name(name)
         if detail and hasattr(detail, "attach"):
             detail.attach()
