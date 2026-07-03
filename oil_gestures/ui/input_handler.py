@@ -120,6 +120,10 @@ class InputHandler(QObject):
     def _on_press(self, event):
         btn = event.button()
         if btn == Qt.LeftButton or btn == Qt.RightButton:
+            # Клик по сцене должен забирать клавиатурный фокус, чтобы после него
+            # работали клавиши (1-6/стрелки). Мы возвращаем True ниже и гасим
+            # событие, поэтому виджет сам фокус по клику не получит - ставим явно.
+            self.plotter.interactor.setFocus()
             self._mouse_pressed = True
             self._mouse_button = btn
             self._mouse_press_x = event.position().x()

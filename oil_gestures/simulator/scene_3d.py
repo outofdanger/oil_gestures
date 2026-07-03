@@ -53,6 +53,11 @@ class Scene3D(QWidget):
 
     def showEvent(self, event):
         super().showEvent(event)
+        # Забираем клавиатурный фокус на 3D-виджет уже ПОСЛЕ показа окна:
+        # setFocus() в __init__ (до show) на Windows не прилипает, из-за чего
+        # клавиши 1-6/стрелки не доходили до InputHandler (он ловит KeyPress
+        # через eventFilter, а тот срабатывает только при наличии фокуса).
+        self.plotter.interactor.setFocus()
         # На первом показе GL-контекст уже валиден: перечитываем профиль (так
         # ловится software-GL, напр. llvmpipe на сервере без видеокарты) и при
         # необходимости снижаем нагрузку.

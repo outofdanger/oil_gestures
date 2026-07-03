@@ -45,6 +45,15 @@ class MainWindow(QMainWindow):
 
         print("Тренажер готов к работе!")
 
+    def keyPressEvent(self, event):
+        # Запасной путь для клавиш: если фокус оказался не на 3D-виджете (и
+        # InputHandler.eventFilter их не поймал), нажатие всё равно всплывёт
+        # сюда, к главному окну. on_key сам игнорирует неизвестные клавиши, а
+        # если 3D-виджет в фокусе - его eventFilter гасит событие раньше, и
+        # сюда оно не доходит (двойной обработки нет).
+        self.controller.on_key(event.key())
+        super().keyPressEvent(event)
+
     def closeEvent(self, event):
         # A gesture-opened menu (Controller.on_right_click via POINTING_INDEX)
         # can sit open indefinitely waiting for THUMB_UP. Close it explicitly
