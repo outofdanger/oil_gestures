@@ -78,6 +78,12 @@ class Model:
         )
 
 
+        # Сначала кеш вентилей
+        self._valve_cache = {}
+        for name in ["valve_1", "valve_2", "valve_3", "valve_4", "valve_5", 
+                     "valve_11", "valve_12", "valve_13", "valve_14", "valve_15"]:
+            self._valve_cache[name] = self.get_by_name(name)
+
         CHAINS = {
             "1": {
                 "valves": ["valve_4", "valve_5", "valve_12"],
@@ -109,10 +115,12 @@ class Model:
 
         self.SYSTEM_MAX_MPA = 12
 
-        # В __init__ после загрузки:
-        self._valve_cache = {}
-        for name in ["valve_1", "valve_2", "valve_3", "valve_4", "valve_5", "valve_11", "valve_12", "valve_13", "valve_14", "valve_15"]:
-            self._valve_cache[name] = self.get_by_name(name)
+        # Кешируем ссылки для быстрого доступа в tick
+        for key, config in self.chains.items():
+            config["_valves"] = [self._valve_cache[v] for v in config["valves"] if v in self._valve_cache]
+            blocker_name = config.get("blocker")
+            config["_blocker"] = self.get_by_name(blocker_name) if blocker_name else None
+            config["_ps"] = self.particle_systems.get(key)
 
     def get_by_actor(self, actor):
         for d in self.details:
@@ -310,21 +318,16 @@ class Model:
         level_gauge_pressure = 0.0
 
         for key, config in self.chains.items():
-            m_name = config.get("blocker")
-            min_percent = self.get_pressure_for_blocker(m_name) if m_name else 100
+            # Быстрый расчёт через кеш
+            min_percent = 100
+            for valve in config["_valves"]:
+                if valve:
+                    percent = (valve._home / valve._max) * 100
+                    min_percent = min(min_percent, percent)
             
-            # Если нет блокера — считаем напрямую
-            if not m_name:
-                min_percent = 100
-                for vname in config["valves"]:
-                    valve = self._valve_cache.get(vname)
-                    if valve:
-                        percent = (valve._home / valve._max) * 100
-                        min_percent = min(min_percent, percent)
+            ps = config["_ps"]
+            m = config["_blocker"]
 
-            ps = self.particle_systems.get(key)
-            m_name = config.get("blocker")
-            m = self.get_by_name(m_name) if m_name else None
             actual_pressure = target_pressure * min_percent / 100 if system_running else 0.0
             controller_pressure = max(controller_pressure, actual_pressure)
 
@@ -381,8 +384,7 @@ class Model:
         for key, config in self.chains.items():
             if config.get("blocker") == blocker_name:
                 min_percent = 100
-                for vname in config["valves"]:
-                    valve = self._valve_cache.get(vname)
+                for valve in config["_valves"]:
                     if valve:
                         percent = (valve._home / valve._max) * 100
                         min_percent = min(min_percent, percent)

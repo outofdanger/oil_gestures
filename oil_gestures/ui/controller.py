@@ -660,19 +660,6 @@ class Controller(QObject):
         self.panel.set_message("⚠ АВАРИЙНЫЙ СТОП")
 
     def _on_inventory_click(self, name: str):
-        # Проверка: нельзя установить если в цепочке давление
-        if name == "level_gauge":
-            min_percent = self.model.get_pressure_for_blocker("plug")
-        else:
-            min_percent = self.model.get_pressure_for_blocker(name)
-        if min_percent > 0:
-            msg = QMessageBox()
-            msg.setIcon(QMessageBox.Warning)
-            msg.setWindowTitle("Опасно!")
-            msg.setText(f"Нельзя установить под давлением\nСначала закройте вентили.")
-            msg.exec()
-            return
-
         # Проверка: установка уровнемера при наличии заглушки
         if name == "level_gauge":
             plug = self.model.get_by_name("plug")
@@ -696,6 +683,20 @@ class Controller(QObject):
                 msg_box.setStandardButtons(QMessageBox.Ok)
                 msg_box.exec()
                 return
+
+        # Проверка: нельзя установить если в цепочке давление
+        if name == "level_gauge":
+            min_percent = self.model.get_pressure_for_blocker("plug")
+        else:
+            min_percent = self.model.get_pressure_for_blocker(name)
+        if min_percent > 0:
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Warning)
+            msg.setWindowTitle("Опасно!")
+            msg.setText(f"Нельзя установить под давлением\nСначала закройте вентили.")
+            msg.exec()
+            return
+
 
         # Если все проверки пройдены, выполняем установку
         detail = self.model.get_by_name(name)

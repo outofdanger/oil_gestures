@@ -346,6 +346,8 @@ class Manometer(Detail):
 
     def set_pressure_mpa(self, mpa):
         mpa = max(0, min(16, mpa))
+        if abs(mpa - self._current_mpa) < 0.01:  # не изменилось
+            return
         self._current_mpa = mpa
         percent = mpa / 16 * 100
         angle = 210 - 240 * (percent / 100)
@@ -885,7 +887,7 @@ class ParticleSystem:
     GAS = "gas"
     AIR_BLAST = "air_blast"
 
-    def __init__(self, plotter, position, direction=(0, 1, 0), particle_type=OIL, count=500):
+    def __init__(self, plotter, position, direction=(0, 1, 0), particle_type=OIL, count=400):
         self.plotter = plotter
         self.position = np.array(position, dtype=float)
         self.direction = np.array(direction, dtype=float)
