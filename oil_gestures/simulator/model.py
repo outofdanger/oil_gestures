@@ -308,12 +308,17 @@ class Model:
         level_gauge_pressure = 0.0
 
         for key, config in self.chains.items():
-            min_percent = 100
-            for vname in config["valves"]:
-                valve = self._valve_cache.get(vname)
-                if valve:
-                    percent = (valve._home / valve._max) * 100
-                    min_percent = min(min_percent, percent)
+            m_name = config.get("blocker")
+            min_percent = self.get_pressure_for_blocker(m_name) if m_name else 100
+            
+            # Если нет блокера — считаем напрямую
+            if not m_name:
+                min_percent = 100
+                for vname in config["valves"]:
+                    valve = self._valve_cache.get(vname)
+                    if valve:
+                        percent = (valve._home / valve._max) * 100
+                        min_percent = min(min_percent, percent)
 
             ps = self.particle_systems.get(key)
             m_name = config.get("blocker")
@@ -364,6 +369,23 @@ class Model:
             level_changed = self.level_gauge_ui.set_pressure_mpa(level_gauge_pressure)
         if level_changed:
             self.update_level_gauge_screen()
+
+    def get_pressure_for_blocker(self, blocker_name):
+        """Давление в цепочке для блокера (манометр/заглушка/уровнемер)."""
+        # Если контроллер выключен — давления нет
+        if not (self.controller_ui.power_on and self.controller_ui.running):
+            return 0
+
+        for key, config in self.chains.items():
+            if config.get("blocker") == blocker_name:
+                min_percent = 100
+                for vname in config["valves"]:
+                    valve = self._valve_cache.get(vname)
+                    if valve:
+                        percent = (valve._home / valve._max) * 100
+                        min_percent = min(min_percent, percent)
+                return min_percent
+        return 0
 
 
     def get_inventory(self):

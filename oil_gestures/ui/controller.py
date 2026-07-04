@@ -376,6 +376,29 @@ class Controller(QObject):
                 self.panel.set_message("Манометр: отдаление")
             return
 
+        # Проверка перед снятием уровнемера
+        if action == "remove_level_gauge":
+            min_percent = self.model.get_pressure_for_blocker("plug")
+            if min_percent > 0:
+                msg = QMessageBox()
+                msg.setIcon(QMessageBox.Warning)
+                msg.setWindowTitle("Опасно!")
+                msg.setText(f"Нельзя снять под давлением\nСначала закройте вентили.")
+                msg.exec()
+                return
+
+        # Проверка перед снятием: нельзя снимать под давлением
+        if action == "remove":
+            min_percent = self.model.get_pressure_for_blocker(detail.name)
+            if min_percent > 0:
+                msg = QMessageBox()
+                msg.setIcon(QMessageBox.Warning)
+                msg.setWindowTitle("Опасно!")
+                msg.setText(f"Нельзя снять под давлением\nСначала закройте вентили.")
+                msg.exec()
+                return
+
+
         self.model.execute_action(detail, action)
         self._start_timer()
         self.panel.set_inventory(self.model.get_inventory())
@@ -527,6 +550,19 @@ class Controller(QObject):
         self.panel.set_message("⚠ АВАРИЙНЫЙ СТОП")
 
     def _on_inventory_click(self, name: str):
+        # Проверка: нельзя установить если в цепочке давление
+        if name == "level_gauge":
+            min_percent = self.model.get_pressure_for_blocker("plug")
+        else:
+            min_percent = self.model.get_pressure_for_blocker(name)
+        if min_percent > 0:
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Warning)
+            msg.setWindowTitle("Опасно!")
+            msg.setText(f"Нельзя установить под давлением\nСначала закройте вентили.")
+            msg.exec()
+            return
+        
         # Проверка: установка уровнемера при наличии заглушки
         if name == "level_gauge":
             plug = self.model.get_by_name("plug")
@@ -558,6 +594,7 @@ class Controller(QObject):
             self.model._active.discard(detail)
             self.panel.set_inventory(self.model.get_inventory())
             self.panel.set_message(f"{name}: установлен(а)")
+    
     def _show_help(self):
         from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel
         
