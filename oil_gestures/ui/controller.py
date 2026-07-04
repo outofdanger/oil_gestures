@@ -1,7 +1,7 @@
 from PySide6.QtCore import QObject, QTimer, Qt, Signal
 from PySide6.QtWidgets import QMenu
 from PySide6.QtGui import QCursor
-from oil_gestures.simulator.details_and_particles import Flap, LevelGaugeCover, LevelGaugeScreen, ControllerScreen
+from oil_gestures.simulator.details_and_particles import Flap, LevelGaugeCover, LevelGaugeScreen, ControllerScreen, ControllerDoor
 from PySide6.QtWidgets import QMessageBox
 
 
@@ -134,6 +134,16 @@ class Controller(QObject):
             else:
                 self.model.execute_action(detail, "close")
                 self.panel.set_message("Крышка: закрывается")
+            self._start_timer()
+            return
+
+        if isinstance(detail, ControllerDoor):
+            if detail._opened:
+                self.model.execute_action(detail, "close")
+                self.panel.set_message("Контроллер: дверца закрывается")
+            else:
+                self.model.execute_action(detail, "open")
+                self.panel.set_message("Контроллер: дверца открывается")
             self._start_timer()
             return
 

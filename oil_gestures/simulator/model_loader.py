@@ -26,7 +26,7 @@ DETAILS = {
 
 CONTROLLER_CONFIG = {
     "file": "assets/controller.glb",
-    "offset": (8.0, -1, 0.0),
+    "offset": (7.0, -1, 0.0),
     "rotation_y": 0.0,
     "scale": 1.2,
     "parts": {
@@ -205,7 +205,7 @@ def load_controller(plotter, details, base_offset):
 
         if name == "controller_door":
             b = mesh.bounds
-            hinge_point = (b[0], (b[2] + b[3]), b[4])
+            hinge_point = (b[0] + 0.07, (b[2] + b[3]), b[4])
 
             detail = ControllerDoor(
                 mesh,

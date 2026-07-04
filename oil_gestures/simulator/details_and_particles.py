@@ -1324,7 +1324,7 @@ class ControllerDoor(Detail):
 
         b = self.mesh.bounds
         self._hinge_point = hinge_point or (
-            b[1],
+            b[0],
             (b[2] + b[3]) / 2,
             (b[4] + b[5]) / 2,
         )
@@ -1406,7 +1406,7 @@ class ControllerLever(Detail):
 
     def toggle(self):
         self._on = not self._on
-        self._target_angle = 90.0 if self._on else 0.0
+        self._target_angle = 135.0 if self._on else 0.0
         self._animating = True
 
     def execute_action(self, action):
