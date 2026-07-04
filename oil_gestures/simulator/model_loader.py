@@ -23,6 +23,18 @@ DETAILS = {
     18: ("manometer_4", Manometer, "black", [17], (0, 0, 1), 1.4),
     19: ("plug", Plug, "red", [7], (1, 0, 0), 1),
 }
+CONTROLLER_BUTTON_LABELS = {
+    "controller_start_button": ("ПУСК", 0.35),
+    "controller_stop_button": ("СТОП", 0.35),
+
+    "controller_button_one": ("МЕНЮ", 0.3),
+    "controller_button_top": ("▲", 0.5),
+    "controller_button_lower": ("▼", 0.5),
+    "controller_button_left": ("◀", 0.5),
+    "controller_button_right": ("▶", 0.5),
+    "controller_button_center": ("ОК", 0.5),
+    "controller_button_long": ("НАЗАД", 0.4),
+}
 
 CONTROLLER_CONFIG = {
     "file": "assets/controller.glb",
@@ -231,6 +243,26 @@ def load_controller(plotter, details, base_offset):
                 name,
                 actor_color,
                 pivot_point=pivot_point,
+            )
+        elif name in CONTROLLER_BUTTON_LABELS:
+            label, font_scale = CONTROLLER_BUTTON_LABELS[name]
+
+            bg_color = (210, 210, 210, 255)
+            if name == "controller_start_button":
+                bg_color = (60, 180, 80, 255)
+            elif name == "controller_stop_button":
+                bg_color = (190, 60, 60, 255)
+
+            detail = TexturedButton(
+                mesh,
+                actor,
+                name,
+                plotter,
+                label=label,
+                bg_color=bg_color,
+                text_color=(20, 20, 20, 255),
+                border_color=(90, 90, 90, 255),
+                font_scale=font_scale,
             )
 
         else:
