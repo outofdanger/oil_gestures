@@ -143,6 +143,7 @@ def load_main_installation(plotter, filepath, details):
     blocks = pv.read(filepath)
     parts = extract_all_meshes(blocks)
     base_offset = build_base_offset(parts)
+    base_offset[0] -= 0.5
 
     for key in sorted(DETAILS.keys()):
         name, cls, color, indices, axis, scale = DETAILS[key]
@@ -217,7 +218,7 @@ def load_controller(plotter, details, base_offset):
 
         if name == "controller_door":
             b = mesh.bounds
-            hinge_point = (b[0] + 0.07, (b[2] + b[3]), b[4])
+            hinge_point = (b[0] + 0.06, (b[2] + b[3]), b[4])
 
             detail = ControllerDoor(
                 mesh,
@@ -226,6 +227,8 @@ def load_controller(plotter, details, base_offset):
                 actor_color,
                 hinge_point=hinge_point,
             )
+            mesh.translate((0, 0.015, 0), inplace=True)  # поднять на 0.1 единицы вверх
+            actor.GetMapper().SetInputData(mesh)
 
         elif name == "controller_screen":
             detail = ControllerScreen(mesh, actor, name, plotter, actor_color)
