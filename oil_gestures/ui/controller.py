@@ -148,17 +148,19 @@ class Controller(QObject):
             ui = self.model.level_gauge_ui
             screen_before = ui.current_screen
             ui.press_input_output()
-            # If we just entered a measurement screen, start the 3-second timer
             if ui.current_screen in ("measure_level", "measure_pressure") and screen_before != ui.current_screen:
-                self._measure_timer.start(2000)
+                if ui.current_screen == "measure_level":
+                    self._try_start_level_measurement()
+                else:
+                    self._measure_timer.start(2000)
             self._refresh_level_gauge_screen()
             self.scene.update()
             self.panel.set_message("Уровнемер: ввод/вывод")
             return
 
         if detail.name == "level_gauge_button_level":
-            self.model.level_gauge_ui.press_level()
-            self._measure_timer.start(2000)
+            self.model.level_gauge_ui.press_level()  # переключает экран на measure_level
+            self._try_start_level_measurement()
             self._refresh_level_gauge_screen()
             self.scene.update()
             self.panel.set_message("Уровнемер: измерение уровня")
@@ -637,14 +639,49 @@ class Controller(QObject):
 
     def _on_measure_complete(self):
         ui = self.model.level_gauge_ui
-        if ui.current_screen == "measure_level":
-            ui.complete_level_measurement()
-        elif ui.current_screen == "measure_pressure":
-            ui._pressure_measured = True
+        # Если ошибки нет и таймер сработал – завершаем измерение
+        if not ui._level_measurement_failed:
+            if ui.current_screen == "measure_level":
+                ui.complete_level_measurement()
+            elif ui.current_screen == "measure_pressure":
+                ui._pressure_measured = True
         self._refresh_level_gauge_screen()
         self.scene.update()
         self.panel.set_message("Уровнемер: измерение завершено")
 
+    def _try_start_level_measurement(self):
+        ui = self.model.level_gauge_ui
+        valve = self.model.get_by_name("valve_1")
+        is_running = self.model.controller_ui.power_on and self.model.controller_ui.running
+        valve_open = (valve is not None and valve._home > 0)
+
+        if not valve_open and not is_running:
+            ui._level_measurement_failed = True
+            ui._level_error_lines = ["Запустите установку и", "откройте затрубную задвижку!"]
+            ui._level_measured = False
+            ui._last_level_m = None
+        elif not valve_open and is_running:
+            ui._level_measurement_failed = True
+            ui._level_error_lines = ["Откройте затрубную задвижку"]
+            ui._level_measured = False
+            ui._last_level_m = None
+        elif valve_open and not is_running:
+            ui._level_measurement_failed = True
+            ui._level_error_lines = ["Запустите установку!"]
+            ui._level_measured = False
+            ui._last_level_m = None
+        else:
+            ui._level_measurement_failed = False
+            ui._level_error_lines = []
+            self._measure_timer.start(2000)
+
+        self._refresh_level_gauge_screen()
+        self.scene.update()
+        if ui._level_measurement_failed:
+            self.panel.set_message("Уровнемер: ошибка измерения")
+        else:
+            self.panel.set_message("Уровнемер: измерение запущено")
+        return not ui._level_measurement_failed
     # ========================
     # АВАРИЙНЫЙ СТОП
     # ========================
