@@ -316,7 +316,7 @@ class Manometer(Detail):
         self._arrow_center = None
         self._home_angle = 0
         self.state = "attached"
-        self._current_mpa = 0.0
+        self._current_mpa = 14.0
 
     def create_gauge(self, plotter):
         center = self.mesh.center
