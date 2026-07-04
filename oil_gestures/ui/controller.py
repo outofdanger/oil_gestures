@@ -1,8 +1,9 @@
 from PySide6.QtCore import QObject, QTimer, Qt, Signal
 from PySide6.QtWidgets import QMenu
 from PySide6.QtGui import QCursor
-from oil_gestures.simulator.details_and_particles import Flap, LevelGaugeCover
+from oil_gestures.simulator.details_and_particles import Flap, LevelGaugeCover, LevelGaugeScreen, ControllerScreen
 from PySide6.QtWidgets import QMessageBox
+
 
 class Controller(QObject):
     """
@@ -38,6 +39,10 @@ class Controller(QObject):
         self._ml_thread = None
         self._ml_event.connect(self._on_ml_event_main)
         self._start_ml_client()
+
+        # Синхронизируем кликабельные зоны экранов с их начальным состоянием
+        self._set_level_gauge_regions()
+        self._set_controller_regions()
 
     # ========================
     # ТАЙМЕР
@@ -75,11 +80,47 @@ class Controller(QObject):
     def on_left_release(self):
         self.camera.stop_rotate()
 
-    def on_left_click(self):
+    def on_left_click(self, position=None):
         detail = self.model.get_highlighted()
         if detail is None:
             return
 
+        if isinstance(detail, (LevelGaugeScreen, ControllerScreen)):
+            if position is not None:
+                self._handle_screen_tap(detail, position)
+            return
+
+        self._dispatch_click(detail)
+
+    def _handle_screen_tap(self, screen, position):
+        target = screen.hit_test(position)
+        if not target:
+            return
+
+        # Новый случай: выбор пункта меню с визуальным подтверждением
+        if isinstance(target, tuple) and len(target) == 3 and target[0] == "select_and_confirm":
+            screen_type, index = target[1], target[2]
+            if screen_type == "level_gauge":
+                ui = self.model.level_gauge_ui
+                ui.selected_mode_index = index
+                self._refresh_level_gauge_screen()
+                # Через 200 мс эмулируем нажатие кнопки подтверждения
+                QTimer.singleShot(200, self._confirm_level_gauge_selection)
+            elif screen_type == "controller":
+                ui = self.model.controller_ui
+                ui.selected_mode_index = index
+                self._refresh_controller_screen()
+                QTimer.singleShot(200, self._confirm_controller_selection)
+            return
+
+        # Старая логика для всех остальных случаев (обычные кнопки)
+        names = target if isinstance(target, (list, tuple)) else (target,)
+        for name in names:
+            button = self.model.get_by_name(name)
+            if button is not None:
+                self._dispatch_click(button)
+
+    def _dispatch_click(self, detail):
         if isinstance(detail, Flap):
             self.model.execute_action(detail, "pulse_open")
             self._start_timer()
@@ -98,7 +139,7 @@ class Controller(QObject):
 
         if detail.name == "level_gauge_button_mode":
             self.model.level_gauge_ui.press_mode()
-            self.model.update_level_gauge_screen()
+            self._refresh_level_gauge_screen()
             self.scene.update()
             self.panel.set_message("Уровнемер: выбор режима")
             return
@@ -110,7 +151,7 @@ class Controller(QObject):
             # If we just entered a measurement screen, start the 3-second timer
             if ui.current_screen in ("measure_level", "measure_pressure") and screen_before != ui.current_screen:
                 self._measure_timer.start(2000)
-            self.model.update_level_gauge_screen()
+            self._refresh_level_gauge_screen()
             self.scene.update()
             self.panel.set_message("Уровнемер: ввод/вывод")
             return
@@ -118,14 +159,14 @@ class Controller(QObject):
         if detail.name == "level_gauge_button_level":
             self.model.level_gauge_ui.press_level()
             self._measure_timer.start(2000)
-            self.model.update_level_gauge_screen()
+            self._refresh_level_gauge_screen()
             self.scene.update()
             self.panel.set_message("Уровнемер: измерение уровня")
             return
 
         if detail.name == "level_gauge_button_return":
             self.model.level_gauge_ui.press_return()
-            self.model.update_level_gauge_screen()
+            self._refresh_level_gauge_screen()
             self.scene.update()
             self.panel.set_message("Уровнемер: главный экран")
             return
@@ -134,7 +175,7 @@ class Controller(QObject):
             self.model.controller_ui.toggle_power()
             self.model.execute_action(detail, "toggle")
             self._start_timer()
-            self.model.update_controller_screen()
+            self._refresh_controller_screen()
 
             power = self.model.controller_ui.power_on
 
@@ -150,7 +191,7 @@ class Controller(QObject):
 
         if detail.name == "controller_start_button":
             started = self.model.controller_ui.press_start()
-            self.model.update_controller_screen()
+            self._refresh_controller_screen()
 
             if started:
                 self._start_timer()
@@ -173,7 +214,7 @@ class Controller(QObject):
 
         if detail.name == "controller_stop_button":
             stopped = self.model.controller_ui.press_stop()
-            self.model.update_controller_screen()
+            self._refresh_controller_screen()
 
             if stopped:
                 self._start_timer()
@@ -196,7 +237,7 @@ class Controller(QObject):
 
         if detail.name == "controller_button_one":
             ok = self.model.controller_ui.press_menu()
-            self.model.update_controller_screen()
+            self._refresh_controller_screen()
             if not ok:
                 self._flash_detail("controller_circle_five", "red", 1000)
             self.scene.update()
@@ -205,7 +246,7 @@ class Controller(QObject):
 
         if detail.name in {"controller_button_top", "controller_button_right"}:
             ok = self.model.controller_ui.press_next()
-            self.model.update_controller_screen()
+            self._refresh_controller_screen()
             if not ok:
                 self._flash_detail("controller_circle_five", "red", 1000)
             self.scene.update()
@@ -214,7 +255,7 @@ class Controller(QObject):
 
         if detail.name in {"controller_button_lower", "controller_button_left"}:
             ok = self.model.controller_ui.press_prev()
-            self.model.update_controller_screen()
+            self._refresh_controller_screen()
             if not ok:
                 self._flash_detail("controller_circle_five", "red", 1000)
             self.scene.update()
@@ -223,7 +264,7 @@ class Controller(QObject):
 
         if detail.name == "controller_button_center":
             ok = self.model.controller_ui.press_confirm()
-            self.model.update_controller_screen()
+            self._refresh_controller_screen()
             if ok:
                 self._start_timer()
                 self._flash_detail("controller_circle_two", "yellow", 600)
@@ -235,12 +276,82 @@ class Controller(QObject):
 
         if detail.name == "controller_button_long":
             ok = self.model.controller_ui.press_back()
-            self.model.update_controller_screen()
+            self._refresh_controller_screen()
             if not ok:
                 self._flash_detail("controller_circle_five", "red", 1000)
             self.scene.update()
             self.panel.set_message("Контроллер: меню" if ok else "Нет питания")
             return
+
+    def _confirm_level_gauge_selection(self):
+        """Эмулирует нажатие кнопки 'ВВОД/ВЫВОД' на уровнемере."""
+        btn = self.model.get_by_name("level_gauge_button_input_output")
+        if btn:
+            self._dispatch_click(btn)
+
+    def _confirm_controller_selection(self):
+        """Эмулирует нажатие кнопки 'ПОДТВЕРДИТЬ' на контроллере."""
+        btn = self.model.get_by_name("controller_button_center")
+        if btn:
+            self._dispatch_click(btn)
+
+    # ========================
+    # ЭКРАНЫ: обновление + кликабельные зоны
+    # ========================
+
+    def _refresh_level_gauge_screen(self):
+        self.model.update_level_gauge_screen()
+        self._set_level_gauge_regions()
+
+    def _refresh_controller_screen(self):
+        self.model.update_controller_screen()
+        self._set_controller_regions()
+
+    def _set_level_gauge_regions(self):
+        screen = self.model.level_gauge_screen
+        if screen is None:
+            return
+        ui = self.model.level_gauge_ui
+        regions = {}
+
+        if ui.current_screen == "home":
+            # строка "ВЫБОР РЕЖИМА" (см. LevelGaugeUIState.get_lines) = кнопка МЕНЮ
+            regions[2] = "level_gauge_button_mode"
+
+        elif ui.current_screen == "mode_select":
+            # тап по конкретному пункту меню = столько нажатий "МЕНЮ",
+            # сколько нужно долистать до него, плюс одно нажатие
+            # "ВВОД/ВЫВОД" для подтверждения — то же самое, что сделал бы
+            # оператор физическими кнопками
+            n = len(ui.modes)
+            for i in range(n):
+                regions[2 + i] = ("select_and_confirm", "level_gauge", i)
+
+        elif ui.current_screen == "results":
+            # строка с текстом результата = "ВВОД/ВЫВОД" (листает результаты)
+            regions[3] = "level_gauge_button_input_output"
+
+        screen.set_regions(regions)
+
+    def _set_controller_regions(self):
+        screen = self.model.controller_screen
+        if screen is None:
+            return
+        ui = self.model.controller_ui
+        regions = {}
+
+        if ui.power_on and ui.current_screen == "menu":
+            n = len(ui.modes)
+            for i in range(n):
+                regions[1 + i] = ("select_and_confirm", "controller", i)
+
+        elif ui.power_on and ui.current_screen == "data":
+            lines = ui.get_lines()
+            # Делаем все строки с данными (кроме заголовка) кликабельными
+            for idx in range(1, len(lines)):
+                regions[idx] = "controller_button_center"
+
+        screen.set_regions(regions)
 
     def on_right_click(self, actor=None):
         detail = self.model.get_by_actor(actor) if actor is not None else None
@@ -296,7 +407,7 @@ class Controller(QObject):
                 from PySide6.QtWidgets import QWidget, QVBoxLayout, QSlider, QLabel, QPushButton, QWidgetAction
                 slider_menu = QMenu("Выберите % открытия", menu)
                 slider_menu.setStyleSheet(menu.styleSheet())
-                
+
                 slider_widget = QWidget()
                 slider_layout = QVBoxLayout(slider_widget)
                 slider = QSlider(Qt.Horizontal)
@@ -307,15 +418,15 @@ class Controller(QObject):
                 slider.valueChanged.connect(lambda v: value_label.setText(f"{v}%"))
                 slider_layout.addWidget(value_label)
                 slider_layout.addWidget(slider)
-                
+
                 apply_btn = QPushButton("Применить")
                 apply_btn.clicked.connect(lambda: self._menu_action(detail, f"set_{slider.value()}"))
                 slider_layout.addWidget(apply_btn)
-                
+
                 slider_action = QWidgetAction(menu)
                 slider_action.setDefaultWidget(slider_widget)
                 slider_menu.addAction(slider_action)
-                
+
                 menu.addMenu(slider_menu)
             else:
                 menu.addAction(label, lambda a=action, d=detail: self._menu_action(d, a))
@@ -420,7 +531,6 @@ class Controller(QObject):
     def on_key(self, key):
         cam = self.camera
 
-        
         if key == Qt.Key_Up:
             cam.move(dy=0.3)
         elif key == Qt.Key_Down:
@@ -531,7 +641,7 @@ class Controller(QObject):
             ui.complete_level_measurement()
         elif ui.current_screen == "measure_pressure":
             ui._pressure_measured = True
-        self.model.update_level_gauge_screen()
+        self._refresh_level_gauge_screen()
         self.scene.update()
         self.panel.set_message("Уровнемер: измерение завершено")
 
@@ -562,7 +672,7 @@ class Controller(QObject):
             msg.setText(f"Нельзя установить под давлением\nСначала закройте вентили.")
             msg.exec()
             return
-        
+
         # Проверка: установка уровнемера при наличии заглушки
         if name == "level_gauge":
             plug = self.model.get_by_name("plug")
@@ -594,32 +704,33 @@ class Controller(QObject):
             self.model._active.discard(detail)
             self.panel.set_inventory(self.model.get_inventory())
             self.panel.set_message(f"{name}: установлен(а)")
-    
+
+
     def _show_help(self):
         from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel
-        
+
         dlg = QDialog()
         dlg.setWindowTitle("Инструкция по управлению")
         dlg.setFixedSize(600, 500)
         dlg.setStyleSheet("background-color: white;")
-        
+
         layout = QVBoxLayout(dlg)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(12)
-        
+
         text = QLabel("""
         🖱️ Мышь:
         • ЛКМ + тянуть — вращение камеры
         • ПКМ — меню действий над деталью
         • Колёсико — zoom
-        
+
         ⌨️ Клавиши:
         • 1-4 — ракурсы камеры
         • R — сброс камеры
         • Esc — возврат к исходному виду
         • Стрелки — движение камеры
         • 1-6 — вкл/выкл частицы
-        
+
         ✋ Жесты (когда курсор выключен):
         • ✊ Кулак — закрыть
         • ✋ Ладонь — открыть
@@ -628,7 +739,7 @@ class Controller(QObject):
         """)
         text.setStyleSheet("color: black; font-size: 13px;")
         layout.addWidget(text)
-        
+
         dlg.exec()
 
     # А это зона того, что добавил Влад

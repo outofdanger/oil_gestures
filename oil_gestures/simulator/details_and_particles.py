@@ -412,9 +412,62 @@ class Body(Detail):
         self.highlightable = False
 
 
-class LevelGaugeScreen(Detail):
+class TouchScreen:
+    """
+    Миксин для LevelGaugeScreen/ControllerScreen: делает текстурный экран
+    полноценно кликабельным. Хранит геометрию плоскости экрана и
+    пиксельные прямоугольники каждой отрисованной строки (см.
+    render_lines), плюс карту "индекс строки -> что нажать".
+
+    Никакой логики приборов тут нет — только перевод 3D-точки клика в
+    пиксель текстуры и обратный поиск того, какая физическая кнопка (или
+    последовательность кнопок) должна быть виртуально "нажата".
+    """
+
+    def _init_touch_screen(self):
+        self._plane_center = np.zeros(3)
+        self._plane_half_w = 0.5
+        self._plane_half_h = 0.5
+        self._line_rects = []   # [(x0, y0, x1, y1), ...] по индексу строки
+        self._regions = {}      # {line_index: "button_name" | ("button_name", ...)}
+
+    def _set_plane_geometry(self, center, width, height):
+        self._plane_center = np.array(center, dtype=float)
+        self._plane_half_w = max(width, 1e-6) / 2.0
+        self._plane_half_h = max(height, 1e-6) / 2.0
+
+    def set_regions(self, regions):
+        """
+        regions: {line_index: "имя_детали"} для прямого соответствия
+        1 строка = 1 кнопка, или {line_index: ("имя_1", "имя_2", ...)} для
+        последовательности виртуальных нажатий (например, чтобы долистать
+        до нужного пункта меню и подтвердить его одним тапом).
+        """
+        self._regions = dict(regions) if regions else {}
+
+    def world_to_pixel(self, world_point):
+        local = np.array(world_point, dtype=float) - self._plane_center
+        u = (local[0] + self._plane_half_w) / (2 * self._plane_half_w)
+        v = 1.0 - (local[1] + self._plane_half_h) / (2 * self._plane_half_h)
+        return u * self._tex_w, v * self._tex_h
+
+    def hit_test(self, world_point):
+        if not self._regions:
+            return None
+        px, py = self.world_to_pixel(world_point)
+        for index, target in self._regions.items():
+            if index >= len(self._line_rects):
+                continue
+            x0, y0, x1, y1 = self._line_rects[index]
+            if x0 <= px <= x1 and y0 <= py <= y1:
+                return target
+        return None
+
+
+class LevelGaugeScreen(TouchScreen, Detail):
     def __init__(self, mesh, actor, name, plotter, color=None):
         super().__init__(mesh, actor, name)
+        self._init_touch_screen()
         self.plotter = plotter
         self.highlightable = False
         self._screen_plane_mesh = None
@@ -451,6 +504,7 @@ class LevelGaugeScreen(Detail):
             i_size=width * 0.94,
             j_size=height * 0.94,
         )
+        self._set_plane_geometry(center, width * 0.94, height * 0.94)
 
         self._screen_plane_actor = self.plotter.add_mesh(
             self._screen_plane_mesh,
@@ -487,9 +541,19 @@ class LevelGaugeScreen(Detail):
         painter.setFont(font)
 
         is_header = True
+        # Сбрасываем старые кликабельные зоны — если после этого рендера
+        # никто не вызовет set_regions(), экран просто не будет
+        # интерактивным (безопасное поведение по умолчанию), а не будет
+        # ссылаться на строки предыдущего состояния экрана
+        self._regions = {}
+        self._line_rects = []
 
         y = padding_top + line_height
         for line in lines[:max_lines]:
+            # Прямоугольник строки для тач-хиттеста фиксируем ДО проверки
+            # на пустую строку, чтобы индексы совпадали с исходным lines
+            self._line_rects.append((padding_left, y - line_height, w - padding_left, y))
+
             if line.strip() == "":
                 y += line_height
                 continue
@@ -955,7 +1019,7 @@ class ParticleSystem:
             # и резким выглядит блик (0.3–0.4 дало бы более матовую нефть)
             prop.SetInterpolationToPBR()
             prop.SetMetallic(0.0)
-            prop.SetRoughness(0.06)
+            prop.SetRoughness(0.3)
             prop.SetSpecular(1.0)
             prop.SetSpecularColor(1.0, 1.0, 1.0)
             prop.SetDiffuse(0.5)
@@ -1413,6 +1477,7 @@ class ControllerScreen(LevelGaugeScreen):
             i_size=width * width_scale,
             j_size=height * height_scale,
         )
+        self._set_plane_geometry(center, width * width_scale, height * height_scale)
 
         self._screen_plane_actor = self.plotter.add_mesh(
             self._screen_plane_mesh,

@@ -122,6 +122,8 @@ class Model:
                 return d
             if hasattr(d, "_gauge_arrow") and d._gauge_arrow == actor:
                 return d
+            if hasattr(d, "_screen_plane_actor") and d._screen_plane_actor == actor:
+                return d
         return None
 
     def highlight(self, detail):

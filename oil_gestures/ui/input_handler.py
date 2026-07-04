@@ -48,14 +48,14 @@ class InputHandler(QObject):
         picker = vtk.vtkCellPicker()
         picker.SetTolerance(0.005)
         picker.Pick(vx, vy, 0, r)
-        return picker.GetActor()
+        return picker.GetActor(), picker.GetPickPosition()
 
     # ========================
     # МЫШЬ
     # ========================
 
     def _on_mouse_move(self, event):
-        actor = self._pick(event)
+        actor, _ = self._pick(event)
         self.controller.on_mouse_move(actor)
 
         if self._mouse_pressed and self._mouse_button == Qt.LeftButton:
@@ -84,8 +84,8 @@ class InputHandler(QObject):
 
         if btn == Qt.LeftButton:
             if self._mouse_pressed and not self._mouse_has_moved:
-                actor = self._pick(event)
-                self.controller.on_left_click()
+                actor, position = self._pick(event)
+                self.controller.on_left_click(position)
             else:
                 self.controller.on_left_release()
 
@@ -95,7 +95,7 @@ class InputHandler(QObject):
 
         elif btn == Qt.RightButton:
             if self._mouse_pressed and not self._mouse_has_moved:
-                actor = self._pick(event)
+                actor, _ = self._pick(event)
                 self.controller.on_right_click(actor)
 
             self._mouse_pressed = False
