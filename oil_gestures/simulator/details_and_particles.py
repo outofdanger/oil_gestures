@@ -109,7 +109,7 @@ class Valve(Detail):
 
     def _rotate(self, angle):
         self.mesh.rotate_vector(self.axis, angle, point=self.center, inplace=True)
-        self.actor.GetMapper().SetInputData(self.mesh)
+        self.mesh.Modified()
 
     def get_menu_actions(self):
         if self._opened:
