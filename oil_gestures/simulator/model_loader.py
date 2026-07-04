@@ -143,7 +143,7 @@ def load_main_installation(plotter, filepath, details):
     blocks = pv.read(filepath)
     parts = extract_all_meshes(blocks)
     base_offset = build_base_offset(parts)
-    base_offset[0] -= 0.5
+    base_offset[0] -= 0.9
 
     for key in sorted(DETAILS.keys()):
         name, cls, color, indices, axis, scale = DETAILS[key]

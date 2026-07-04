@@ -1,5 +1,5 @@
 from oil_gestures.simulator.model_loader import load_model
-from oil_gestures.simulator.details_and_particles import ParticleSystem, Manometer, LevelGaugeAssembly
+from oil_gestures.simulator.details_and_particles import ParticleSystem, Manometer, LevelGaugeAssembly, Valve
 from oil_gestures.simulator.level_gauge_ui import LevelGaugeUIState
 from oil_gestures.simulator.controller_ui import ControllerUIState
 
@@ -268,6 +268,15 @@ class Model:
 
         if getattr(detail, "parent_assembly", None) is not None:
             return []
+
+        if isinstance(detail, Valve):
+            if detail._max > 0:
+                percent = int((detail._home / detail._max) * 100)
+            else:
+                percent = 0
+            actions = detail.get_menu_actions()
+            status = "Закрыто" if percent == 0 else f"Открыта: {percent}%"
+            return [(status, None)] + actions
 
         return detail.get_menu_actions()
 

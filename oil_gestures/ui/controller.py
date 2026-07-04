@@ -411,10 +411,13 @@ class Controller(QObject):
         info.setEnabled(False)
         menu.addSeparator()
 
+        status_action = None  # ДИНАМИЧЕСКОЕ ОБНОВЛЕНИЕ: сохраним ссылку на строку статуса
+
         for label, action in actions:
             if action is None:
                 item = menu.addAction(label)
                 item.setEnabled(False)
+                status_action = item  # ДИНАМИЧЕСКОЕ ОБНОВЛЕНИЕ: запоминаем
             elif action == "partial":
                 from PySide6.QtWidgets import QWidget, QVBoxLayout, QSlider, QLabel, QPushButton, QWidgetAction
                 slider_menu = QMenu("Выберите % открытия", menu)
@@ -422,17 +425,25 @@ class Controller(QObject):
 
                 slider_widget = QWidget()
                 slider_layout = QVBoxLayout(slider_widget)
+                if hasattr(detail, '_home') and hasattr(detail, '_max') and detail._max > 0:
+                    current_percent = int((detail._home / detail._max) * 100)
+                else:
+                    current_percent = 50
+
                 slider = QSlider(Qt.Horizontal)
                 slider.setRange(0, 100)
-                slider.setValue(50)
-                value_label = QLabel("50%")
+                slider.setValue(current_percent)
+                value_label = QLabel(f"{current_percent}%")
                 value_label.setStyleSheet("color: black;")
                 slider.valueChanged.connect(lambda v: value_label.setText(f"{v}%"))
                 slider_layout.addWidget(value_label)
                 slider_layout.addWidget(slider)
 
                 apply_btn = QPushButton("Применить")
-                apply_btn.clicked.connect(lambda: self._menu_action(detail, f"set_{slider.value()}"))
+                # ДИНАМИЧЕСКОЕ ОБНОВЛЕНИЕ: передаём status_action в замыкание
+                apply_btn.clicked.connect(
+                    lambda: self._menu_action(detail, f"set_{slider.value()}", status_action)
+                )
                 slider_layout.addWidget(apply_btn)
 
                 slider_action = QWidgetAction(menu)
@@ -441,11 +452,15 @@ class Controller(QObject):
 
                 menu.addMenu(slider_menu)
             else:
-                menu.addAction(label, lambda a=action, d=detail: self._menu_action(d, a))
+                # ДИНАМИЧЕСКОЕ ОБНОВЛЕНИЕ: передаём status_action в замыкание
+                menu.addAction(
+                    label,
+                    lambda a=action, d=detail, sa=status_action: self._menu_action(d, a, sa)
+                )
 
         menu.exec(QCursor.pos())
 
-    def _menu_action(self, detail, action):
+    def _menu_action(self, detail, action, status_action=None):
         if action == "focus_level_gauge":
             assembly = getattr(detail, "parent_assembly", None)
             if assembly and not self._level_gauge_zoomed:
@@ -464,6 +479,7 @@ class Controller(QObject):
                 self.scene.update()
                 self.panel.set_message("Уровнемер: отдаление")
             return
+
         if action == "focus_controller":
             bounds = self.model.get_controller_bounds()
             if bounds is not None and not self._controller_zoomed:
@@ -521,13 +537,36 @@ class Controller(QObject):
                 msg.exec()
                 return
 
-
         self.model.execute_action(detail, action)
+        if action.startswith("set_") and status_action is not None:
+            self._update_status_when_done(detail, status_action)
         self._start_timer()
         self.panel.set_inventory(self.model.get_inventory())
 
         if action == "remove_level_gauge":
             self._level_gauge_zoomed = False
+
+
+    def _update_status_action(self, detail, status_action):
+        if status_action is None:
+            return
+        if hasattr(detail, '_home') and hasattr(detail, '_max') and detail._max > 0:
+            percent = int((detail._home / detail._max) * 100)
+        else:
+            percent = 0
+        text = "Закрыто" if percent == 0 else f"Открыта: {percent}%"
+        status_action.setText(text)
+
+    def _update_status_when_done(self, detail, status_action):
+        """Периодически проверяет, завершилась ли анимация, и обновляет статус."""
+        if status_action is None:
+            return
+        if detail.has_animation():
+            # Анимация ещё идёт — проверяем через 100 мс
+            QTimer.singleShot(100, lambda: self._update_status_when_done(detail, status_action))
+        else:
+            # Анимация завершена — обновляем статус
+            self._update_status_action(detail, status_action)
 
     # ========================
     # КОЛЁСИКО
