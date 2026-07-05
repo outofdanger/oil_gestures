@@ -1401,15 +1401,15 @@ class ControllerLever(Detail):
         self._pivot_point = pivot_point or (
             (b[0] + b[1]) / 2,
             b[2],
-            (b[4] + b[5]) / 2,
+            b[4],
         )
 
-        # Начни с этой оси; если будет крутиться не туда, см. ниже
+        # Ось проходит вдоль ширины рычага; pivot стоит на нижнем крае крепления.
         self._axis = (1, 0, 0)
 
     def toggle(self):
         self._on = not self._on
-        self._target_angle = 135.0 if self._on else 0.0
+        self._target_angle = 80.0 if self._on else 0.0
         self._animating = True
 
     def force_off(self):

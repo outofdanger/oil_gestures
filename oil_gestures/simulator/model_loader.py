@@ -239,7 +239,7 @@ def load_controller(plotter, details, base_offset):
             pivot_point = (
                 (b[0] + b[1]) / 2,
                 b[2],
-                (b[4] + b[5]) / 2,
+                b[4],
             )
             detail = ControllerLever(
                 mesh,
