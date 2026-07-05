@@ -826,14 +826,23 @@ class Controller(QObject):
 
 
     def _show_help(self):
-        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QScrollArea, QWidget
 
         dlg = QDialog()
         dlg.setWindowTitle("Инструкция по управлению")
-        dlg.setFixedSize(600, 500)
+        dlg.setFixedSize(650, 600)
         dlg.setStyleSheet("background-color: white;")
 
-        layout = QVBoxLayout(dlg)
+        outer_layout = QVBoxLayout(dlg)
+        outer_layout.setContentsMargins(10, 10, 10, 10)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("background-color: white; border: none;")
+
+        content = QWidget()
+        content.setStyleSheet("background-color: white;")
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(12)
 
@@ -858,6 +867,49 @@ class Controller(QObject):
         """)
         text.setStyleSheet("color: black; font-size: 13px;")
         layout.addWidget(text)
+
+        level_gauge_text = QLabel("""
+        📊 Уровнемер — порядок работы:
+         1. Убрать заглушку
+         2. Открыть внешнюю затрубную задвижку
+         3. Убедиться, что есть давление по манометру
+            (манометр насоса покажет давление, только
+            если вместе с задвижкой открыт ещё и
+            соседний вентиль)
+         4. Продуть линию
+         5. Закрыть задвижку
+         6. Установить уровнемер
+         7. Выбрать режим кнопкой РЕЖИМ, подтвердить
+            кнопкой ВВОД/ВЫВОД (или кликами по экрану)
+         8. Открыть внешнюю затрубную задвижку
+         9. Резко ударить по рычагу клапана
+         10. На табло появится значение уровня
+         11. Закрыть внешнюю затрубную задвижку
+         12. Стравить давление через клапан
+         13. Снять уровнемер
+
+        ⚠️ Важно:
+        • Пока установлена заглушка, поставить уровнемер нельзя,
+          и наоборот.
+        • Снять или поставить заглушку/уровнемер нельзя
+          под давлением — сначала закройте задвижку.
+        • Давление в линии уровнемера появится, только
+          если установка включена и запущена, задвижка
+          открыта и уровнемер уже установлен.
+        • Замер уровня запускается кнопками РЕЖИМ +
+          ВВОД/ВЫВОД либо кнопкой УРОВЕНЬ — если на
+          этот момент задвижка ещё закрыта или установка
+          не запущена, экран покажет ошибку, и режим
+          нужно будет подтвердить повторно.
+        • Просмотреть уже полученные результаты можно,
+          выбрав режим "Просмотр результатов".
+        """)
+        level_gauge_text.setStyleSheet("color: black; font-size: 13px;")
+        layout.addWidget(level_gauge_text)
+
+        layout.addStretch()
+        scroll.setWidget(content)
+        outer_layout.addWidget(scroll)
 
         dlg.exec()
 
