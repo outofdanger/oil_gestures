@@ -1,5 +1,5 @@
 from oil_gestures.simulator.model_loader import load_model
-from oil_gestures.simulator.details_and_particles import ParticleSystem, Manometer, LevelGaugeAssembly, Valve
+from oil_gestures.simulator.details_and_particles import ParticleSystem, Manometer, LevelGaugeAssembly, Valve, LevelGaugeScreen, ControllerScreen, Flap
 from oil_gestures.simulator.level_gauge_ui import LevelGaugeUIState
 from oil_gestures.simulator.controller_ui import ControllerUIState
 
@@ -15,6 +15,54 @@ class Model:
         self.controller_ui = ControllerUIState()
         self.controller_screen = None
         self.level_gauge_assembly = None
+        self.display_names = {
+            "valve_1": "Внешняя затрубная задвижка",
+            "valve_2": "Внутренняя затрубная задвижка",
+            "valve_3": "Манифольдная задвижка",
+            "valve_4": "Центральная задвижка",
+            "valve_5": "Лубрикаторная задвижка",
+            "valve_11": "Вентиль",
+            "valve_12": "Вентиль",
+            "valve_13": "Вентиль",
+            "valve_14": "Вентиль",
+            "valve_15": "Пробоотборник",
+            "manometer_1": "Затрубный манометр",
+            "manometer_2": "Буферный манометр",
+            "manometer_3": "Линейный манометр",
+            "manometer_4": "Манометр для контроля межколонного давления",
+            "plug": "Заглушка",
+            "level_gauge": "Уровнемер",
+            "level_gauge_cover": "Защитная крышка дисплея",
+            "level_gauge_base": "Корпус уровнемера",
+            "level_gauge_flap": "Клапан",
+            "level_gauge_screen": "Экран",
+            "level_gauge_button_mode": "Кнопка РЕЖИМ",
+            "level_gauge_button_input_output": "Кнопка ВВОД/ВЫВОД",
+            "level_gauge_button_level": "Кнопка УРОВЕНЬ",
+            "level_gauge_button_return": "Кнопка ВОЗВРАТ",
+            "controller_body": "Корпус контроллера",
+            "controller_screen": "Экран",
+            "controller_panel": "Панель",
+            "controller_door": "Дверца контроллера",
+            "controller_lever_on_off": "Рычаг ПИТАНИЕ",
+            "controller_start_button": "Кнопка ПУСК",
+            "controller_stop_button": "Кнопка СТОП",
+            "controller_button_one": "Кнопка МЕНЮ",
+            "controller_button_two": "Запасная кнопка",
+            "controller_button_top": "Кнопка ВВЕРХ",
+            "controller_button_lower": "Кнопка ВНИЗ",
+            "controller_button_left": "Кнопка ВЛЕВО",
+            "controller_button_right": "Кнопка ВПРАВО",
+            "controller_button_center": "Кнопка ПОДТВЕРДИТЬ",
+            "controller_button_long": "Кнопка НАЗАД",
+            "controller_big_button": "Аварийный стоп",
+            "controller_black_wheel": "Чёрное колесо",
+            "controller_circle_one": "Индикатор СТОП",
+            "controller_circle_two": "Индикатор РАБОТА",
+            "controller_circle_three": "Индикатор ПУСК",
+            "controller_circle_four": "Индикатор ОШИБКА",
+            "controller_circle_five": "Индикатор ПИТАНИЕ",
+        }
 
         for d in self.details:
             if isinstance(d, Manometer):
@@ -122,6 +170,9 @@ class Model:
             config["_blocker"] = self.get_by_name(blocker_name) if blocker_name else None
             config["_ps"] = self.particle_systems.get(key)
 
+    def get_display_name(self, detail):
+        return self.display_names.get(detail.name, detail.name)
+
     def get_by_actor(self, actor):
         for d in self.details:
             if getattr(d, "actor", None) == actor:
@@ -159,6 +210,22 @@ class Model:
             if assembly and getattr(assembly, "state", None) == "attached":
                 actions.append(("🔧 Снять", "remove_level_gauge"))
 
+            return actions
+
+        if isinstance(detail, ControllerScreen):
+            actions = []
+            if controller_zoomed:
+                actions.append(("🔎 Отдалить", "unfocus_controller"))
+            else:
+                actions.append(("🔍 Приблизить", "focus_controller"))
+            return actions
+
+        if isinstance(detail, LevelGaugeScreen):
+            actions = []
+            if level_gauge_zoomed:
+                actions.append(("🔎 Отдалить", "unfocus_level_gauge"))
+            else:
+                actions.append(("🔍 Приблизить", "focus_level_gauge"))
             return actions
 
         if detail.name in {
@@ -268,7 +335,11 @@ class Model:
             return actions
 
         if getattr(detail, "parent_assembly", None) is not None:
-            return []
+            # Разрешаем для Flap и всех экранов (LevelGaugeScreen, ControllerScreen)
+            if isinstance(detail, (Flap, LevelGaugeScreen, ControllerScreen)):
+                pass  # не блокируем
+            else:
+                return []
 
         if isinstance(detail, Valve):
             if detail._max > 0:
@@ -401,12 +472,11 @@ class Model:
                 return min_percent
         return 0
 
-
     def get_inventory(self):
         items = []
         for d in self.details:
             if hasattr(d, "state") and d.state == "removed":
-                items.append(d.name)
+                items.append((d.name, self.get_display_name(d)))
         return items
 
     def get_by_name(self, name):

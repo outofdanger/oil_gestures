@@ -426,7 +426,7 @@ class Controller(QObject):
         }
         """)
 
-        info = menu.addAction(f"{detail.name} ({type(detail).__name__})")
+        info = menu.addAction(self.model.get_display_name(detail))
         info.setEnabled(False)
         menu.addSeparator()
 

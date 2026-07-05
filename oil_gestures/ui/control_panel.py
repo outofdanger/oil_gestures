@@ -89,7 +89,14 @@ class ControlPanel(QWidget):
             return
 
         for item in items:
-            btn = QPushButton(f"📦 {item}")
+            # Элемент инвентаря - кортеж (внутреннее имя, отображаемое имя).
+            # Для обратной совместимости поддержим и случай, если придёт просто строка.
+            if isinstance(item, (tuple, list)):
+                name, display_name = item[0], item[1]
+            else:
+                name, display_name = item, item
+
+            btn = QPushButton(f"📦 {display_name}")
             btn.setStyleSheet("""
                 QPushButton {
                     background-color: #34495e; color: white; font-size: 12px;
@@ -97,5 +104,5 @@ class ControlPanel(QWidget):
                 }
                 QPushButton:hover { background-color: #2980b9; }
             """)
-            btn.clicked.connect(lambda checked, name=item: self.inventory_item_clicked.emit(name))
+            btn.clicked.connect(lambda checked, name=name: self.inventory_item_clicked.emit(name))
             self.inventory_layout.addWidget(btn)

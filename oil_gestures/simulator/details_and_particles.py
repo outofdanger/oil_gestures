@@ -191,6 +191,9 @@ class Flap(Detail):
         self._jet_direction = np.array(jet_direction or (1.0, 0.0, 0.0), dtype=float)
         self._jet_started_in_hold = False
 
+    def get_menu_actions(self):
+        return [("💨 Стравить давление", "pulse_open")]
+
     def _start_jet(self):
         if self._air_jet is None:
             return
