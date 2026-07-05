@@ -1409,9 +1409,17 @@ class ControllerLever(Detail):
         self._target_angle = 135.0 if self._on else 0.0
         self._animating = True
 
+    def force_off(self):
+        self._on = False
+        self._target_angle = 0.0
+        self._rotate_to(0.0)
+        self._animating = False
+
     def execute_action(self, action):
         if action == "toggle":
             self.toggle()
+        elif action == "force_off":
+            self.force_off()
 
     def has_animation(self):
         return self._animating

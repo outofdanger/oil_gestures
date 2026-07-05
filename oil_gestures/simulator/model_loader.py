@@ -28,12 +28,13 @@ CONTROLLER_BUTTON_LABELS = {
     "controller_stop_button": ("СТОП", 0.35),
 
     "controller_button_one": ("МЕНЮ", 0.3),
-    "controller_button_top": ("▲", 0.5),
-    "controller_button_lower": ("▼", 0.5),
-    "controller_button_left": ("◀", 0.5),
-    "controller_button_right": ("▶", 0.5),
+    "controller_button_top": ("СЛЕД", 0.3),
+    "controller_button_right": ("СЛЕД", 0.3),
+    "controller_button_lower": ("ПРЕД", 0.3),
+    "controller_button_left": ("ПРЕД", 0.3),
     "controller_button_center": ("ОК", 0.5),
     "controller_button_long": ("НАЗАД", 0.4),
+    "controller_big_button": ("АВАРИЙНЫЙ\nСТОП",0.14)
 }
 
 CONTROLLER_CONFIG = {

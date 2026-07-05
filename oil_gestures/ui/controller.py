@@ -120,6 +120,18 @@ class Controller(QObject):
             if button is not None:
                 self._dispatch_click(button)
 
+    def _reset_controller_indicators(self):
+        for name in (
+                "controller_circle_one",
+                "controller_circle_two",
+                "controller_circle_three",
+                "controller_circle_four",
+                "controller_circle_five",
+        ):
+            indicator = self.model.get_by_name(name)
+            if indicator:
+                indicator.set_color("silver")
+
     def _dispatch_click(self, detail):
         if isinstance(detail, Flap):
             self.model.execute_action(detail, "pulse_open")
@@ -191,6 +203,9 @@ class Controller(QObject):
 
             power = self.model.controller_ui.power_on
 
+            if not power:
+                self._reset_controller_indicators()
+
             power_indicator = self.model.get_by_name("controller_circle_five")
             if power_indicator:
                 power_indicator.set_color("green" if power else "silver")
@@ -245,6 +260,10 @@ class Controller(QObject):
                 self.panel.set_message("Нет питания")
 
             self.scene.update()
+            return
+
+        if detail.name == "controller_big_button":
+            self._perform_controller_emergency_stop("Контроллер: аварийная остановка")
             return
 
         if detail.name == "controller_button_one":
@@ -735,15 +754,28 @@ class Controller(QObject):
     # АВАРИЙНЫЙ СТОП
     # ========================
 
-    def _emergency_stop(self):
+    def _perform_controller_emergency_stop(self, message):
+        self.model.controller_ui.force_power_off()
+
+        lever = self.model.get_by_name("controller_lever_on_off")
+        if lever:
+            self.model.execute_action(lever, "force_off")
+
         if self.model.particle_systems:
             for ps in self.model.particle_systems.values():
                 ps.stop()
 
+        self._reset_controller_indicators()
+        self._refresh_controller_screen()
+        self._start_timer()
+        self.scene.update()
+        self.panel.set_message(message)
+
+    def _emergency_stop(self):
+        self._perform_controller_emergency_stop("⚠ АВАРИЙНЫЙ СТОП")
         self._level_gauge_zoomed = False
         self._controller_zoomed = False
         self._manometer_zoomed = False
-        self.panel.set_message("⚠ АВАРИЙНЫЙ СТОП")
 
     def _on_inventory_click(self, name: str):
         # Проверка: установка уровнемера при наличии заглушки

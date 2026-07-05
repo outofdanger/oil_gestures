@@ -33,6 +33,12 @@ class ControllerUIState:
             self.current_screen = "home"
             self.status = "ПИТАНИЕ ВЫКЛ"
 
+    def force_power_off(self):
+        self.power_on = False
+        self.running = False
+        self.current_screen = "home"
+        self.status = "АВАРИЙНАЯ ОСТАНОВКА"
+
     def press_start(self):
         if not self._require_power():
             return False
