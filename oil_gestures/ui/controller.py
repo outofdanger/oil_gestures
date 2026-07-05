@@ -136,26 +136,26 @@ class Controller(QObject):
         if isinstance(detail, Flap):
             self.model.execute_action(detail, "pulse_open")
             self._start_timer()
-            self.panel.set_message("Flap: стравливание давления")
+            self.panel.set_model_state("Flap: стравливание давления")
             return
 
         if isinstance(detail, LevelGaugeCover):
             if detail._closed:
                 self.model.execute_action(detail, "open")
-                self.panel.set_message("Крышка: открывается")
+                self.panel.set_model_state("Крышка: открывается")
             else:
                 self.model.execute_action(detail, "close")
-                self.panel.set_message("Крышка: закрывается")
+                self.panel.set_model_state("Крышка: закрывается")
             self._start_timer()
             return
 
         if isinstance(detail, ControllerDoor):
             if detail._opened:
                 self.model.execute_action(detail, "close")
-                self.panel.set_message("Контроллер: дверца закрывается")
+                self.panel.set_model_state("Контроллер: дверца закрывается")
             else:
                 self.model.execute_action(detail, "open")
-                self.panel.set_message("Контроллер: дверца открывается")
+                self.panel.set_model_state("Контроллер: дверца открывается")
             self._start_timer()
             return
 
@@ -163,7 +163,7 @@ class Controller(QObject):
             self.model.level_gauge_ui.press_mode()
             self._refresh_level_gauge_screen()
             self.scene.update()
-            self.panel.set_message("Уровнемер: выбор режима")
+            self.panel.set_model_state("Уровнемер: выбор режима")
             return
 
         if detail.name == "level_gauge_button_input_output":
@@ -177,7 +177,7 @@ class Controller(QObject):
                     self._measure_timer.start(2000)
             self._refresh_level_gauge_screen()
             self.scene.update()
-            self.panel.set_message("Уровнемер: ввод/вывод")
+            self.panel.set_model_state("Уровнемер: ввод/вывод")
             return
 
         if detail.name == "level_gauge_button_level":
@@ -185,14 +185,14 @@ class Controller(QObject):
             self._try_start_level_measurement()
             self._refresh_level_gauge_screen()
             self.scene.update()
-            self.panel.set_message("Уровнемер: измерение уровня")
+            self.panel.set_model_state("Уровнемер: измерение уровня")
             return
 
         if detail.name == "level_gauge_button_return":
             self.model.level_gauge_ui.press_return()
             self._refresh_level_gauge_screen()
             self.scene.update()
-            self.panel.set_message("Уровнемер: главный экран")
+            self.panel.set_model_state("Уровнемер: главный экран")
             return
 
         if detail.name == "controller_lever_on_off":
@@ -211,7 +211,7 @@ class Controller(QObject):
                 power_indicator.set_color("green" if power else "silver")
 
             self.scene.update()
-            self.panel.set_message(
+            self.panel.set_model_state(
                 "Контроллер: питание включено" if power else "Контроллер: питание выключено"
             )
             return
@@ -231,10 +231,10 @@ class Controller(QObject):
                     unwork_indicator.set_color("silver")
 
                 self._flash_detail("controller_circle_two", "yellow", 3000)
-                self.panel.set_message("Контроллер: пуск")
+                self.panel.set_model_state("Контроллер: пуск")
             else:
                 self._flash_detail("controller_circle_five", "red", 1000)
-                self.panel.set_message("Нет питания")
+                self.panel.set_model_state("Нет питания")
 
             self.scene.update()
             return
@@ -254,10 +254,10 @@ class Controller(QObject):
                     stop_indicator.set_color("red")
 
                 self._flash_detail("controller_circle_two", "yellow", 3000)
-                self.panel.set_message("Контроллер: стоп")
+                self.panel.set_model_state("Контроллер: стоп")
             else:
                 self._flash_detail("controller_circle_five", "red", 1000)
-                self.panel.set_message("Нет питания")
+                self.panel.set_model_state("Нет питания")
 
             self.scene.update()
             return
@@ -272,7 +272,7 @@ class Controller(QObject):
             if not ok:
                 self._flash_detail("controller_circle_five", "red", 1000)
             self.scene.update()
-            self.panel.set_message("Контроллер: выбор режима" if ok else "Нет питания")
+            self.panel.set_model_state("Контроллер: выбор режима" if ok else "Нет питания")
             return
 
         if detail.name in {"controller_button_top", "controller_button_right"}:
@@ -281,7 +281,7 @@ class Controller(QObject):
             if not ok:
                 self._flash_detail("controller_circle_five", "red", 1000)
             self.scene.update()
-            self.panel.set_message("Контроллер: следующий режим" if ok else "Нет питания")
+            self.panel.set_model_state("Контроллер: следующий режим" if ok else "Нет питания")
             return
 
         if detail.name in {"controller_button_lower", "controller_button_left"}:
@@ -290,7 +290,7 @@ class Controller(QObject):
             if not ok:
                 self._flash_detail("controller_circle_five", "red", 1000)
             self.scene.update()
-            self.panel.set_message("Контроллер: предыдущий режим" if ok else "Нет питания")
+            self.panel.set_model_state("Контроллер: предыдущий режим" if ok else "Нет питания")
             return
 
         if detail.name == "controller_button_center":
@@ -302,7 +302,7 @@ class Controller(QObject):
             else:
                 self._flash_detail("controller_circle_five", "red", 1000)
             self.scene.update()
-            self.panel.set_message(self.model.controller_ui.status if ok else "Нет питания")
+            self.panel.set_model_state(self.model.controller_ui.status if ok else "Нет питания")
             return
 
         if detail.name == "controller_button_long":
@@ -311,7 +311,7 @@ class Controller(QObject):
             if not ok:
                 self._flash_detail("controller_circle_five", "red", 1000)
             self.scene.update()
-            self.panel.set_message("Контроллер: меню" if ok else "Нет питания")
+            self.panel.set_model_state("Контроллер: меню" if ok else "Нет питания")
             return
 
     def _confirm_level_gauge_selection(self):
@@ -487,7 +487,7 @@ class Controller(QObject):
                 self.camera.focus_on_level_gauge(assembly.bounds)
                 self._level_gauge_zoomed = True
                 self.scene.update()
-                self.panel.set_message("Уровнемер: приближение")
+                self.panel.set_model_state("Уровнемер: приближение")
             return
 
         if action == "unfocus_level_gauge":
@@ -496,7 +496,7 @@ class Controller(QObject):
                 self._level_gauge_zoomed = False
                 self._manometer_zoomed = False
                 self.scene.update()
-                self.panel.set_message("Уровнемер: отдаление")
+                self.panel.set_model_state("Уровнемер: отдаление")
             return
 
         if action == "focus_controller":
@@ -506,7 +506,7 @@ class Controller(QObject):
                 self.camera.focus_on_controller(bounds)
                 self._controller_zoomed = True
                 self.scene.update()
-                self.panel.set_message("Контроллер: приближение")
+                self.panel.set_model_state("Контроллер: приближение")
             return
 
         if action == "unfocus_controller":
@@ -514,7 +514,7 @@ class Controller(QObject):
                 self.camera.restore_saved_view()
                 self._controller_zoomed = False
                 self.scene.update()
-                self.panel.set_message("Контроллер: отдаление")
+                self.panel.set_model_state("Контроллер: отдаление")
             return
 
         if action == "focus_manometer":
@@ -523,7 +523,7 @@ class Controller(QObject):
                 self.camera.focus_on_manometer(detail.bounds)
                 self._manometer_zoomed = True
                 self.scene.update()
-                self.panel.set_message("Манометр: приближение")
+                self.panel.set_model_state("Манометр: приближение")
             return
 
         if action == "unfocus_manometer":
@@ -531,7 +531,7 @@ class Controller(QObject):
                 self.camera.restore_saved_view()
                 self._manometer_zoomed = False
                 self.scene.update()
-                self.panel.set_message("Манометр: отдаление")
+                self.panel.set_model_state("Манометр: отдаление")
             return
 
         # Проверка перед снятием уровнемера
@@ -615,7 +615,7 @@ class Controller(QObject):
             self._controller_zoomed = False
             self._manometer_zoomed = False
             self.scene.update()
-            self.panel.set_message("Исходный вид")
+            self.panel.set_model_state("Исходный вид")
 
     # ========================
     # ЖЕСТЫ
@@ -628,27 +628,27 @@ class Controller(QObject):
             if detail and hasattr(detail, 'close') and not detail.has_animation():
                 self.model.execute_action(detail, 'close')
                 self._start_timer()
-                self.panel.set_message(f"✊ Закрыть: {detail.name}")
+                self.panel.set_model_state(f"✊ Закрыть: {detail.name}")
             else:
-                self.panel.set_message("✊ Кулак (нет цели)")
+                self.panel.set_model_state("✊ Кулак (нет цели)")
 
         elif name in ("OPEN_PALM", "Open_Palm"):
             if detail and hasattr(detail, 'open') and not detail.has_animation():
                 self.model.execute_action(detail, 'open')
                 self._start_timer()
-                self.panel.set_message(f"✋ Открыть: {detail.name}")
+                self.panel.set_model_state(f"✋ Открыть: {detail.name}")
             else:
-                self.panel.set_message("✋ Ладонь (нет цели)")
+                self.panel.set_model_state("✋ Ладонь (нет цели)")
 
         elif name in ("THUMB_UP", "Thumb_Up"):
             self._emergency_stop()
-            self.panel.set_message("👍 Аварийный стоп")
+            self.panel.set_model_state("👍 Аварийный стоп")
 
         elif name in ("VICTORY", "Victory"):
-            self.panel.set_message("✌ Победа (курсор вкл/выкл)")
+            self.panel.set_model_state("✌ Победа (курсор вкл/выкл)")
 
         else:
-            self.panel.set_message(f"Жест: {name} ({confidence:.0%})")
+            self.panel.set_model_state(f"Жест: {name} ({confidence:.0%})")
 
     def _start_ml_client(self):
         """Запустить поток чтения ML-событий."""
@@ -691,15 +691,15 @@ class Controller(QObject):
 
             if enabled:
                 action = cursor.get("action", "NONE")
-                self.panel.set_message(f"🖐️ Курсор: {action}")
+                self.panel.set_gesture(f"🖐️ Курсор: {action}")
             elif static and isinstance(static, dict):
                 name = static.get("name", "—")
                 conf = static.get("confidence", 0)
                 print(f"STATIC: {name} {conf:.2f}")
-                self.panel.set_message(f"✋ {name} ({conf:.0%})")
+                self.panel.set_gesture(f"✋ {name} ({conf:.0%})")
                 self.on_gesture(name, conf)
             else:
-                self.panel.set_message("👋 Рука есть")
+                self.panel.set_gesture("👋 Рука есть")
 
     # ========================
     # ИЗМЕРЕНИЕ
@@ -715,7 +715,7 @@ class Controller(QObject):
                 ui._pressure_measured = True
         self._refresh_level_gauge_screen()
         self.scene.update()
-        self.panel.set_message("Уровнемер: измерение завершено")
+        self.panel.set_model_state("Уровнемер: измерение завершено")
 
     def _try_start_level_measurement(self):
         ui = self.model.level_gauge_ui
@@ -746,9 +746,9 @@ class Controller(QObject):
         self._refresh_level_gauge_screen()
         self.scene.update()
         if ui._level_measurement_failed:
-            self.panel.set_message("Уровнемер: ошибка измерения")
+            self.panel.set_model_state("Уровнемер: ошибка измерения")
         else:
-            self.panel.set_message("Уровнемер: измерение запущено")
+            self.panel.set_model_state("Уровнемер: измерение запущено")
         return not ui._level_measurement_failed
     # ========================
     # АВАРИЙНЫЙ СТОП
@@ -769,7 +769,7 @@ class Controller(QObject):
         self._refresh_controller_screen()
         self._start_timer()
         self.scene.update()
-        self.panel.set_message(message)
+        self.panel.set_model_state(message)
 
     def _emergency_stop(self):
         self._perform_controller_emergency_stop("⚠ АВАРИЙНЫЙ СТОП")
@@ -822,7 +822,7 @@ class Controller(QObject):
             detail.attach()
             self.model._active.discard(detail)
             self.panel.set_inventory(self.model.get_inventory())
-            self.panel.set_message(f"{name}: установлен(а)")
+            self.panel.set_model_state(f"{name}: установлен(а)")
 
 
     def _show_help(self):

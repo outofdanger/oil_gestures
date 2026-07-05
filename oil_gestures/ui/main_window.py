@@ -15,6 +15,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(" Тренажер оператора скважины")
         self.setWindowIcon(QIcon("assets/icon.png"))
         self.resize(1300, 700)
+        self.setMinimumSize(1000, 660)
 
         central = QWidget()
         self.setCentralWidget(central)
