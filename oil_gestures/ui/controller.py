@@ -616,21 +616,11 @@ class Controller(QObject):
     def on_key(self, key):
         cam = self.camera
 
-        if key in (Qt.Key_1, Qt.Key_2, Qt.Key_3, Qt.Key_4, Qt.Key_5, Qt.Key_6):
-            key_str = {Qt.Key_1: "1", Qt.Key_2: "2", Qt.Key_3: "3",
-                       Qt.Key_4: "4", Qt.Key_5: "5", Qt.Key_6: "6"}[key]
-            ps = self.model.particle_systems.get(key_str)
-            if ps:
-                if ps._active:
-                    ps.stop()
-                    self.panel.set_model_state(f"Частицы {key_str}: выкл")
-                    self.scene.update()
-                else:
-                    ps.start()
-                    self._start_timer()
-                    self.panel.set_model_state(f"Частицы {key_str}: вкл")
-            return
-
+        # Ручной тумблер частиц клавишами 1-6 намеренно убран: поток теперь
+        # прод-логика в Model.tick() (нефть/газ идут там, где цепочка вентилей
+        # открыта + контроллер запущен + не перекрыто блокером). Ручной запуск
+        # тик всё равно перебивал бы на следующем кадре. Открывай вентили
+        # (мышью/меню или жестом THUMB_UP) - поток пойдёт сам.
         if key == Qt.Key_Up:
             cam.move(dy=0.3)
         elif key == Qt.Key_Down:
