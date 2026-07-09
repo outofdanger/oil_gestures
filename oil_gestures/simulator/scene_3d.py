@@ -4,6 +4,7 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout
 from PySide6.QtCore import Qt
 
 from oil_gestures.simulator.render_profile import RenderProfile
+from oil_gestures.simulator.render_scheduler import RenderScheduler
 
 
 class Scene3D(QWidget):
@@ -14,12 +15,15 @@ class Scene3D(QWidget):
 
         # Кросс-платформенный профиль рендера (macOS/Linux/Windows, software-GL,
         # сглаживание, флаг точек-сфер частиц). Управляется env OIL_AA /
-        # OIL_POINT_SPHERES / OIL_RENDER_SCALE и т.д. Анимацией/рендером по тику
-        # по-прежнему управляет Controller (свой QTimer + scene.update()).
+        # OIL_POINT_SPHERES / OIL_RENDER_SCALE и т.д.
         self.profile = RenderProfile.detect()
         pv.global_theme.multi_samples = self.profile.multi_samples
 
-        self.plotter = QtInteractor(self)
+        # auto_update=False — забираем рендер себе у pyvistaqt: иначе он держит
+        # фоновый таймер (~5 FPS), рендеря вхолостую. Кадрами управляет
+        # RenderScheduler: render-on-demand (request_render) + кадровый таймер
+        # анимации (start_animation). В покое рендер не идёт вовсе.
+        self.plotter = QtInteractor(self, auto_update=False)
         layout.addWidget(self.plotter.interactor)
 
         self.plotter.interactor.SetInteractorStyle(None)
@@ -40,6 +44,10 @@ class Scene3D(QWidget):
         new_focus = (focus[0], focus[1] + 5, focus[2])
         self.plotter.camera_position = [new_pos, new_focus, (0, 1, 0)]
 
+        # Единый владелец кадра (render-on-demand + кадровый таймер анимации).
+        # Колбэк тика регистрирует Controller через scheduler.set_tick().
+        self.scheduler = RenderScheduler(self.plotter, fps=self.profile.animation_fps)
+
         # Применяем сглаживание/частоту обновления; финальная (де)градация под
         # software-GL — в showEvent, когда GL-контекст уже создан.
         self.profile = self.profile.apply(self.plotter)
@@ -52,10 +60,19 @@ class Scene3D(QWidget):
         # клавиши 1-6/стрелки не доходили до InputHandler.
         self.plotter.interactor.setFocus()
         # На первом показе GL-контекст валиден: перечитываем профиль (ловим
-        # software-GL) и при необходимости снижаем нагрузку.
+        # software-GL), синхронизируем FPS и рисуем первый кадр (auto_update
+        # выключен, поэтому без явного запроса сцена не отрисуется).
         if not self._profile_finalized:
             self._profile_finalized = True
             self.profile = self.profile.apply(self.plotter)
+            self.scheduler.set_fps(self.profile.animation_fps)
+            self.scheduler.request_render()
+
+    def request_render(self):
+        """Запросить одиночную перерисовку (коалесцируется планировщиком)."""
+        self.scheduler.request_render()
 
     def update(self):
-        self.plotter.update()
+        # Совместимость: контроллер коллег зовёт scene.update() после разовых
+        # изменений сцены — маршрутизируем в render-on-demand.
+        self.scheduler.request_render()

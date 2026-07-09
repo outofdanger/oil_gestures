@@ -24,9 +24,10 @@ class Controller(QObject):
         self.scene = scene
         self.panel = panel
 
-        self._timer = QTimer()
-        self._timer.timeout.connect(self._on_tick)
-        self._timer_active = False
+        # Кадром управляет RenderScheduler сцены (render-on-demand + кадровый
+        # таймер анимации). Регистрируем колбэк одного кадра анимации; _stop_timer
+        # больше не нужен — планировщик сам останавливается, когда тик вернёт False.
+        self.scene.scheduler.set_tick(self._frame_tick)
 
         self._measure_timer = QTimer()
         self._measure_timer.setSingleShot(True)
@@ -66,21 +67,20 @@ class Controller(QObject):
     # ========================
 
     def _start_timer(self):
-        if not self._timer_active:
-            self._timer.start(16)
-            self._timer_active = True
+        # Шим: все прежние вызовы _start_timer() коллег запускают кадровый
+        # таймер планировщика (камера/вентили/частицы анимируются).
+        self.scene.scheduler.start_animation()
 
     def _stop_timer(self):
-        if not self.model.has_active() and not self.camera.is_rotating():
-            self._timer.stop()
-            self._timer_active = False
+        # Планировщик сам останавливается, когда _frame_tick вернёт False.
+        pass
 
-    def _on_tick(self):
-        self.camera.tick()
-        self.model.tick()
-        self.scene.update()
-        if not self.model.has_active() and not self.camera.is_rotating():
-            self._stop_timer()
+    def _frame_tick(self, dt):
+        """Один кадр анимации (колбэк RenderScheduler). Возвращает True, пока
+        что-то ещё движется — иначе планировщик останавливает таймер."""
+        self.camera.tick(dt)
+        self.model.tick(dt)
+        return self.model.has_active() or self.camera.is_rotating()
 
     # ========================
     # МЫШЬ — ОТ INPUT HANDLER
@@ -89,6 +89,10 @@ class Controller(QObject):
     def on_mouse_move(self, actor):
         detail = self.model.get_by_actor(actor)
         self.model.highlight(detail)
+        # auto_update выключен -> подсветку при наведении надо перерисовать
+        # явно (во время вращения/анимации кадровый таймер и так рисует, а
+        # request_render в это время коалесцируется/игнорируется).
+        self.scene.request_render()
 
     def on_left_drag(self, dx):
         self.camera.start_rotate(-dx * 51)
