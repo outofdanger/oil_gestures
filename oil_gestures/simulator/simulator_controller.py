@@ -2,21 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from oil_gestures.commands.command_dispatcher import CommandDispatcher
-from oil_gestures.commands.command_mapper import CommandMapper
-from oil_gestures.core.enums import CommandName, GestureName, RecognitionSource
-from oil_gestures.core.types import GestureResult
+from oil_gestures.core.enums import GestureName
 
 CONTRACT_NAME = "oil_gestures.ml.runtime"
-
-# Static-gesture -> command mapping (docs/command_mapping.md). FIST is dispatched
-# as an emergency stop here; THUMB_UP is handled as a generic "activate selected
-# detail" (the Qt layer decides what activation means per detail type), so it no
-# longer needs a concrete command here beyond marking intent.
-STATIC_GESTURE_COMMANDS: dict[str, str] = {
-    "FIST": "EMERGENCY_STOP",
-    "THUMB_UP": "OPEN_VALVE",
-}
 
 
 @dataclass
@@ -60,17 +48,8 @@ class SimulatorController:
     SWIPE/THUMB_UP can't move the scene while the hand is driving the cursor.
     """
 
-    def __init__(
-        self,
-        model,
-        command_mapper: CommandMapper | None = None,
-        dispatcher: CommandDispatcher | None = None,
-    ) -> None:
+    def __init__(self, model) -> None:
         self.model = model
-        self._command_mapper = command_mapper or CommandMapper.from_strings(
-            STATIC_GESTURE_COMMANDS
-        )
-        self._dispatcher = dispatcher or CommandDispatcher()
         self._armed_detail = None
 
     def clear_armed(self) -> None:
@@ -124,26 +103,12 @@ class SimulatorController:
         result = GestureEventResult(gesture_name=name, gesture_confidence=confidence)
 
         try:
-            gesture_result = GestureResult(
-                name=GestureName(name),
-                confidence=confidence,
-                source=RecognitionSource.STATIC_RULES,
-                timestamp=0.0,
-            )
+            gesture_name = GestureName(name)
         except ValueError:
             result.message = self._format_generic(name, confidence)
             return result
 
-        command_result = self._command_mapper.map(gesture_result)
-        command = command_result.command
-
-        if command == CommandName.EMERGENCY_STOP:
-            self._dispatcher.dispatch(command_result, self.model)
-            result.emergency = True
-            result.message = "✊ Аварийная остановка течения"
-            return result
-
-        if gesture_result.name == GestureName.THUMB_UP:
+        if gesture_name == GestureName.THUMB_UP:
             # Activate the currently selected detail - the Controller decides
             # what activation means per type (valve toggle, remove manometer,
             # press controller button, ...). Close any open preview menu.
@@ -151,15 +116,13 @@ class SimulatorController:
             result.close_menu = True
             result.action_taken = True
             result.message = "👍 Активировать выбранное"
-            return result
-
-        if gesture_result.name == GestureName.VICTORY:
+        elif gesture_name == GestureName.VICTORY:
             result.message = "✌ Победа (курсор вкл/выкл)"
-            return result
-
-        # OPEN_PALM and anything else not in docs/command_mapping.md: show the
-        # gesture, but do not guess a command for it.
-        result.message = self._format_generic(name, confidence)
+        else:
+            # FIST больше не аварийка (пересекается со SQUEEZE-зумом): аварийный
+            # стоп теперь только в меню и на контроллере. OPEN_PALM/прочее -
+            # просто показать жест.
+            result.message = self._format_generic(name, confidence)
         return result
 
     def _apply_dynamic_gesture(self, dynamic: dict) -> GestureEventResult:
@@ -174,8 +137,8 @@ class SimulatorController:
 
         if gesture_name == GestureName.POINTING_INDEX:
             self._apply_pointing_index(result)
-        elif gesture_name == GestureName.SWIPE_LEFT:
-            self._apply_swipe(result)
+        elif gesture_name in (GestureName.SWIPE_LEFT, GestureName.SWIPE_RIGHT):
+            self._apply_swipe(gesture_name, result)
         elif gesture_name == GestureName.ROTATE_CLOCKWISE:
             result.rotate_step = 1
             result.message = "🔄 Открыть вентиль больше"
@@ -201,19 +164,24 @@ class SimulatorController:
         result.action_taken = True
         result.message = f"👉 Меню: {detail.name}"
 
-    def _apply_swipe(self, result: GestureEventResult) -> None:
-        # Single-direction cycling (SWIPE_RIGHT is dropped upstream - a swipe's
-        # return stroke reads as the opposite swipe). Steps forward and wraps
-        # last -> first over the current selection scope (all big nodes, or the
-        # controller's buttons when zoomed into it - see Model selection scope).
-        self.model.highlight_next()
+    def _apply_swipe(self, gesture_name: GestureName, result: GestureEventResult) -> None:
+        # Two-directional cycling over the current selection scope (all big
+        # nodes, or the controller's buttons when zoomed in - see Model
+        # selection scope). The return-stroke false-opposite is handled upstream
+        # by the directional lockout in gestures.dynamic.model_loader, so both
+        # SWIPE_LEFT and SWIPE_RIGHT are safe to use again.
+        if gesture_name == GestureName.SWIPE_RIGHT:
+            self.model.highlight_previous()
+        else:
+            self.model.highlight_next()
         # Selection changed - any open preview menu is stale.
         self._armed_detail = None
         result.close_menu = True
         result.action_taken = True
 
         detail = self.model.get_highlighted()
-        result.message = f"👉 Выбрано: {detail.name}" if detail else "👉 Нет деталей"
+        arrow = "👈" if gesture_name == GestureName.SWIPE_RIGHT else "👉"
+        result.message = f"{arrow} Выбрано: {detail.name}" if detail else f"{arrow} Нет деталей"
 
     def _format_generic(self, name: str | None, confidence) -> str:
         try:

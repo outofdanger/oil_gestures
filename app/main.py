@@ -191,6 +191,7 @@ def run(
                 min_confidence=config.dynamic.min_confidence,
                 veto_floor=config.dynamic.veto_floor,
                 device=config.dynamic.device,
+                directional_lockout_seconds=config.dynamic.directional_lockout_seconds,
             )
         )
         if config.dynamic.stgcn_checkpoint_path and config.dynamic.bilstm_checkpoint_path

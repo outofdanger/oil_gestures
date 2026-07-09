@@ -306,6 +306,10 @@ def load_config(config_dir: str | Path | None = None) -> OilGesturesConfig:
                 dynamic_defaults.swipe_cooldown_seconds,
             ),
             device=str(dynamic_section.get("device", dynamic_defaults.device)),
+            directional_lockout_seconds=_as_float(
+                dynamic_section.get("directional_lockout_seconds"),
+                dynamic_defaults.directional_lockout_seconds,
+            ),
             stgcn_checkpoint_path=(
                 dynamic_defaults.stgcn_checkpoint_path
                 if "stgcn_checkpoint_path" not in dynamic_section

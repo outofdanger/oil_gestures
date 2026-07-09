@@ -35,14 +35,20 @@ _CONTINUOUS_LABELS: frozenset[str] = frozenset(
     {GestureName.ROTATE_CLOCKWISE.value, GestureName.ROTATE_COUNTERCLOCKWISE.value}
 )
 
-# Recognized but intentionally NOT emitted as actions. SWIPE_RIGHT is dropped
-# here (upstream of the decision layer, so it can't even consume its cooldown)
-# because the *return stroke* of a SWIPE_LEFT is itself recognized as a
-# SWIPE_RIGHT - keeping both directions caused back-and-forth selection jumps.
-# Element cycling is now one-directional (SWIPE_LEFT steps forward and wraps
-# last -> first), which still reaches every element. Empty this set to bring
-# reverse swipes back.
-_DISABLED_LABELS: frozenset[str] = frozenset({GestureName.SWIPE_RIGHT.value})
+# Opposite-direction pairs. The *return stroke* of a gesture (the hand moving
+# back to neutral after a rotate/swipe/squeeze) is itself recognized as the
+# OPPOSITE gesture, which would undo the action. Instead of disabling one
+# direction outright (the old SWIPE_RIGHT hack), we lock out the opposite
+# direction for a short window after a direction was last active - see the
+# directional lockout in EnsembleDynamicGestureModel.update().
+_OPPOSITE_LABELS: dict[str, str] = {
+    GestureName.SWIPE_LEFT.value: GestureName.SWIPE_RIGHT.value,
+    GestureName.SWIPE_RIGHT.value: GestureName.SWIPE_LEFT.value,
+    GestureName.ROTATE_CLOCKWISE.value: GestureName.ROTATE_COUNTERCLOCKWISE.value,
+    GestureName.ROTATE_COUNTERCLOCKWISE.value: GestureName.ROTATE_CLOCKWISE.value,
+    GestureName.SQUEEZE.value: GestureName.RELEASE.value,
+    GestureName.RELEASE.value: GestureName.SQUEEZE.value,
+}
 
 
 class _BiLSTMGestureClassifier(nn.Module):
@@ -200,6 +206,11 @@ class DynamicModelLoaderConfig:
     veto_floor: float = 0.20
     # EMA weight for the newest frame in each model's own probability smoother.
     smoothing_alpha: float = 0.5
+    # After a direction (SWIPE_LEFT, ROTATE_CW, SQUEEZE, ...) is active, its
+    # opposite is suppressed for this long - the hand's return stroke reads as
+    # the opposite gesture and would undo the action. Larger = safer against
+    # accidental reversals but slower to switch direction on purpose.
+    directional_lockout_seconds: float = 0.8
 
 
 def _ensemble_decision(
@@ -314,6 +325,10 @@ class EnsembleDynamicGestureModel:
         # classifies as the OPPOSITE swipe, causing back-and-forth selection
         # "rollbacks". Keyed on actual hand state, not a timer.
         self._ready_to_fire = True
+        # Directional lockout state: last active direction + its timestamp, to
+        # suppress the opposite gesture during the hand's return stroke.
+        self._last_dir_label: str | None = None
+        self._last_dir_ts: float = 0.0
         logger.info(
             "Loaded dynamic gesture ensemble: ST-GCN %s (lead, window=%d) + BiLSTM %s "
             "(confirm, window=%d), classes=%s, on %s.",
@@ -339,6 +354,8 @@ class EnsembleDynamicGestureModel:
         self._bilstm_smoother.reset()
         # Hand lost / paused = a fresh session: let the next gesture fire.
         self._ready_to_fire = True
+        self._last_dir_label = None
+        self._last_dir_ts = 0.0
 
     def update(self, packet: LandmarkPacket) -> GestureResult | None:
         if not packet.hand_detected:
@@ -388,12 +405,22 @@ class EnsembleDynamicGestureModel:
             self._ready_to_fire = True
             return None
 
-        if label in _DISABLED_LABELS:
-            # Recognized but disabled (e.g. SWIPE_RIGHT). Drop it WITHOUT
-            # touching the refractory - a disabled gesture is neither a fire
-            # nor a rest, so a SWIPE_LEFT's return stroke can't re-arm us and
-            # then sneak a reverse step through.
-            return None
+        # Directional lockout: if this label is the opposite of a direction that
+        # was active within directional_lockout_seconds, it is the return stroke
+        # of that gesture - suppress it (without re-anchoring the lockout, so the
+        # lockout stays measured from the real direction). Otherwise record it as
+        # the active direction. Lets both directions of a pair stay enabled
+        # (SWIPE_LEFT/RIGHT, ROTATE_CW/CCW, SQUEEZE/RELEASE) without rollbacks.
+        opposite = _OPPOSITE_LABELS.get(label)
+        if opposite is not None:
+            ts = packet.timestamp
+            if (
+                self._last_dir_label == opposite
+                and ts - self._last_dir_ts < self.config.directional_lockout_seconds
+            ):
+                return None
+            self._last_dir_label = label
+            self._last_dir_ts = ts
 
         try:
             gesture_name = GestureName(label)

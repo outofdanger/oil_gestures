@@ -40,6 +40,10 @@ dynamic:
   # Torch device for the ST-GCN + BiLSTM ensemble. "auto" = CUDA GPU when
   # available (e.g. your RTX 4050), else CPU. Force with "cuda" or "cpu".
   device: auto
+  # После срабатывания направления (swipe/rotate/squeeze) его противоположность
+  # глушится на столько секунд - чтобы возвратный ход руки не отменял действие.
+  # Больше = надёжнее от ложных откатов, но медленнее менять направление вручную.
+  directional_lockout_seconds: 0.8
   # Checkpoint pair loaded by gestures.dynamic.model_loader.load_dynamic_model().
   # See dynamic_gestures/README.md for how they were trained and the other
   # variants available in dynamic_gestures/models/. Either set to null
