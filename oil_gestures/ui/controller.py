@@ -694,8 +694,13 @@ class Controller(QObject):
         if result.close_menu and self._open_menu is not None:
             self._open_menu.close()
 
-        if result.open_menu and self._open_menu is None:
-            self._open_gesture_menu()
+        # POINTING_INDEX работает тумблером: в жестовом режиме кликнуть вне меню
+        # нельзя, поэтому повторный POINTING_INDEX закрывает уже открытое меню.
+        if result.open_menu:
+            if self._open_menu is None:
+                self._open_gesture_menu()
+            else:
+                self._open_menu.close()
 
         # THUMB_UP -> активировать выбранную деталь (клик по её типу).
         if result.activate:
