@@ -43,7 +43,7 @@ dynamic:
   # После срабатывания направления (swipe/rotate/squeeze) его противоположность
   # глушится на столько секунд - чтобы возвратный ход руки не отменял действие.
   # Больше = надёжнее от ложных откатов, но медленнее менять направление вручную.
-  directional_lockout_seconds: 0.8
+  directional_lockout_seconds: 1.2
   # Checkpoint pair loaded by gestures.dynamic.model_loader.load_dynamic_model().
   # See dynamic_gestures/README.md for how they were trained and the other
   # variants available in dynamic_gestures/models/. Either set to null

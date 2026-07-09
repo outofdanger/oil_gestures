@@ -210,7 +210,7 @@ class DynamicModelLoaderConfig:
     # opposite is suppressed for this long - the hand's return stroke reads as
     # the opposite gesture and would undo the action. Larger = safer against
     # accidental reversals but slower to switch direction on purpose.
-    directional_lockout_seconds: float = 0.8
+    directional_lockout_seconds: float = 1.2
 
 
 def _ensemble_decision(

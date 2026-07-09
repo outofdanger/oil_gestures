@@ -141,9 +141,11 @@ class SimulatorController:
             self._apply_swipe(gesture_name, result)
         elif gesture_name == GestureName.ROTATE_CLOCKWISE:
             result.rotate_step = 1
+            result.close_menu = True  # чтобы не осталось стухшего превью-меню
             result.message = "🔄 Открыть вентиль больше"
         elif gesture_name == GestureName.ROTATE_COUNTERCLOCKWISE:
             result.rotate_step = -1
+            result.close_menu = True
             result.message = "🔄 Прикрыть вентиль"
         elif gesture_name == GestureName.SQUEEZE:
             result.zoom_in = True
