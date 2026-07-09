@@ -36,8 +36,9 @@ class GestureEventResult:
     # SQUEEZE / RELEASE: zoom into the selected assembly / return to main view.
     zoom_in: bool = False
     zoom_out: bool = False
-    # ROTATE_CLOCKWISE / CCW: step controller pressure up (+1) / down (-1).
-    pressure_step: int = 0
+    # ROTATE_CLOCKWISE / CCW: open the selected valve a bit more (+1) / less (-1)
+    # (its % open slider). The chain logic turns valve openness into pressure.
+    rotate_step: int = 0
     # Whether the cursor (mouse-control) mode is active this frame - the UI uses
     # it to show the mode and to know scene gestures were intentionally skipped.
     cursor_enabled: bool = False
@@ -176,11 +177,11 @@ class SimulatorController:
         elif gesture_name == GestureName.SWIPE_LEFT:
             self._apply_swipe(result)
         elif gesture_name == GestureName.ROTATE_CLOCKWISE:
-            result.pressure_step = 1
-            result.message = "🔄 Давление +"
+            result.rotate_step = 1
+            result.message = "🔄 Открыть вентиль больше"
         elif gesture_name == GestureName.ROTATE_COUNTERCLOCKWISE:
-            result.pressure_step = -1
-            result.message = "🔄 Давление -"
+            result.rotate_step = -1
+            result.message = "🔄 Прикрыть вентиль"
         elif gesture_name == GestureName.SQUEEZE:
             result.zoom_in = True
             result.message = "🤏 Приблизить"

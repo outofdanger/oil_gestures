@@ -42,10 +42,11 @@ class Controller(QObject):
         self._controller_zoomed = False
         self._manometer_zoomed = False
 
-        # Троттлинг ROTATE -> давление: удержание жеста плавно крутит давление
-        # (increase_flow/decrease_flow) не чаще раза в _pressure_cooldown секунд.
-        self._last_pressure_ts = 0.0
-        self._pressure_cooldown = 0.25
+        # Троттлинг ROTATE -> % открытия вентиля: удержание жеста плавно крутит
+        # вентиль не чаще раза в _rotate_cooldown секунд, шаг _rotate_step_pct.
+        self._last_rotate_ts = 0.0
+        self._rotate_cooldown = 0.25
+        self._rotate_step_pct = 10
         # Последний показанный режим (для индикации CURSOR/жесты в панели).
         self._last_cursor_mode = None
 
@@ -699,9 +700,9 @@ class Controller(QObject):
         if result.zoom_out:
             self._zoom_out()
 
-        # ROTATE -> давление контроллера (с троттлингом на удержание).
-        if result.pressure_step:
-            self._apply_pressure_step(result.pressure_step)
+        # ROTATE -> % открытия выбранного вентиля (с троттлингом на удержание).
+        if result.rotate_step:
+            self._apply_rotate_step(result.rotate_step)
 
         if result.action_taken:
             self._start_timer()
@@ -780,18 +781,23 @@ class Controller(QObject):
         elif self._manometer_zoomed:
             self._menu_action(detail, "unfocus_manometer")
 
-    def _apply_pressure_step(self, step):
-        """ROTATE: шаг давления контроллера, не чаще раза в _pressure_cooldown."""
-        now = time.monotonic()
-        if now - self._last_pressure_ts < self._pressure_cooldown:
+    def _apply_rotate_step(self, step):
+        """ROTATE: приоткрыть/прикрыть выбранный вентиль (его % открытия), не
+        чаще раза в _rotate_cooldown. Через цепочку это и регулирует давление."""
+        detail = self.model.get_highlighted()
+        if not isinstance(detail, Valve):
+            self.panel.set_model_state("🔄 Выберите вентиль для регулировки")
             return
-        self._last_pressure_ts = now
-        if step > 0:
-            self.model.controller_ui.increase_flow()
-        else:
-            self.model.controller_ui.decrease_flow()
-        self._refresh_controller_screen()
+        now = time.monotonic()
+        if now - self._last_rotate_ts < self._rotate_cooldown:
+            return
+        self._last_rotate_ts = now
+        max_angle = detail._max or 360
+        current_pct = (detail._target / max_angle) * 100 if max_angle else 0
+        new_pct = int(max(0, min(100, round(current_pct + step * self._rotate_step_pct))))
+        self.model.execute_action(detail, f"set_{new_pct}")  # -> Valve.set_position
         self._start_timer()
+        self.panel.set_model_state(f"🔄 {self.model.get_display_name(detail)}: {new_pct}%")
 
     # ========================
     # ЖЕСТОВОЕ МЕНЮ (POINTING_INDEX -> открыть, THUMB_UP -> действие)
