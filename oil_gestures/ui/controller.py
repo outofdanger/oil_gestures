@@ -422,19 +422,26 @@ class Controller(QObject):
         detail = self.model.get_by_actor(actor) if actor is not None else None
         if detail is None:
             return
-
         self.model.highlight(detail)
+        menu = self._build_detail_menu(detail)
+        if menu is not None:
+            menu.exec(QCursor.pos())
 
+    def _build_detail_menu(self, detail):
+        """Собрать ПОЛНОЕ контекстное меню детали (статус, действия, слайдер %
+        для вентиля) - единый источник для ПКМ и жестового POINTING_INDEX,
+        чтобы меню было одинаковым. Родитель — scene (безопасно для долго
+        открытого жестового меню). None, если действий нет."""
         actions = self.model.get_menu_actions(
             detail,
             self._level_gauge_zoomed,
             self._controller_zoomed,
-            self._manometer_zoomed
+            self._manometer_zoomed,
         )
         if not actions:
-            return
+            return None
 
-        menu = QMenu()
+        menu = QMenu(self.scene)
         menu.setStyleSheet("""
         QMenu {
             background-color: white;
@@ -511,7 +518,7 @@ class Controller(QObject):
                     lambda a=action, d=detail, sa=status_action: self._menu_action(d, a, sa)
                 )
 
-        menu.exec(QCursor.pos())
+        return menu
 
     def _menu_action(self, detail, action, status_action=None):
         if action == "focus_level_gauge":
@@ -804,26 +811,16 @@ class Controller(QObject):
     # ========================
 
     def _open_gesture_menu(self):
-        """Неблокирующее меню для выделенной детали (визуальное подтверждение
-        перед THUMB_UP). Отдельно от on_right_click мыши: popup вместо exec,
-        чтобы не подвешивать рендер, и с родителем, чтобы не сегфолтить при
-        закрытии окна."""
+        """POINTING_INDEX: то же ПОЛНОЕ меню, что и по ПКМ (_build_detail_menu),
+        но неблокирующим popup вместо exec (чтобы не подвешивать рендер, пока
+        меню ждёт THUMB_UP) и над выбранной деталью. Меню parented к scene, так
+        что долго открытое не сегфолтит при закрытии окна."""
         detail = self.model.get_highlighted()
         if detail is None:
             return
-        actions = self.model.get_menu_actions(
-            detail, self._level_gauge_zoomed, self._controller_zoomed, self._manometer_zoomed
-        )
-        if not actions:
+        menu = self._build_detail_menu(detail)
+        if menu is None:
             return
-        menu = QMenu(self.scene)
-        info = menu.addAction(self.model.get_display_name(detail))
-        info.setEnabled(False)
-        menu.addSeparator()
-        for label, action in actions:
-            if action in (None, "partial"):
-                continue
-            menu.addAction(label, lambda a=action, d=detail: self._menu_action(d, a))
         self._open_menu = menu
         menu.aboutToHide.connect(self._on_menu_closed)
         menu.popup(self._menu_global_pos(detail))
