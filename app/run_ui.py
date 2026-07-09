@@ -54,8 +54,11 @@ if _system == "Linux" and os.path.exists("/proc/driver/nvidia"):
     _gpu_mode = "NVIDIA (PRIME offload)"
 elif _system == "Windows" and shutil.which("nvidia-smi"):
     # Windows: nvidia-smi ставится вместе с драйвером NVIDIA -> дискретка есть.
+    # Плоские точки для частиц газа (шейдер точек-сфер на части Windows/GPU
+    # контекстов не компилируется, как SSAA). Имя переменной должно совпадать
+    # с тем, что читает RenderProfile: OIL_POINT_SPHERES (без префикса __).
+    os.environ.setdefault("OIL_POINT_SPHERES", "0")
     # Прописываем предпочтение High performance для текущего python.exe.
-    os.environ.setdefault("__OIL_POINT_SPHERES", "0")
     if _prefer_nvidia_on_windows(sys.executable):
         _gpu_mode = "NVIDIA (High performance в реестре Windows)"
 
