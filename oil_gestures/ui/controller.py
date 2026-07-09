@@ -5,6 +5,7 @@ from oil_gestures.simulator.details_and_particles import Flap, LevelGaugeCover, 
 from PySide6.QtWidgets import QMessageBox
 
 from oil_gestures.integration.contracts import CAMERA_FRAME_CONTRACT
+from oil_gestures.integration.qt_client import QtEventClient
 from oil_gestures.simulator.simulator_controller import SimulatorController
 from oil_gestures.ui.camera_frame_decoder import CameraFrameDecoder
 
@@ -15,7 +16,6 @@ class Controller(QObject):
     Знает camera, model, scene, panel.
     Получает события от InputHandler.
     """
-    _ml_event = Signal(dict)
 
     def __init__(self, camera, model, scene, panel):
         super().__init__()
@@ -51,9 +51,11 @@ class Controller(QObject):
         self._camera_decoder = CameraFrameDecoder(self)
         self._camera_decoder.frame_ready.connect(self.panel.set_camera_image)
 
-        self._ml_thread = None
-        self._ml_event.connect(self._on_ml_event_main)
-        self._start_ml_client()
+        # Поток ML-событий — на нативном QTcpSocket (без Python-потока и без
+        # конкуренции за GIL с рендером), с экспоненциальным reconnect.
+        self._ml_client = QtEventClient(parent=self)
+        self._ml_client.event_received.connect(self._on_ml_event_main)
+        self._ml_client.start()
 
         # Синхронизируем кликабельные зоны экранов с их начальным состоянием
         self._set_level_gauge_regions()
@@ -638,66 +640,8 @@ class Controller(QObject):
             self.panel.set_model_state("Исходный вид")
 
     # ========================
-    # ЖЕСТЫ
+    # ЖЕСТЫ (ML)
     # ========================
-
-    def on_gesture(self, name: str, confidence: float = 1.0):
-        detail = self.model.get_highlighted()
-
-        if name in ("FIST", "Closed_Fist"):
-            if detail and hasattr(detail, 'close') and not detail.has_animation():
-                self.model.execute_action(detail, 'close')
-                self._start_timer()
-                self.panel.set_model_state(f"✊ Закрыть: {detail.name}")
-            else:
-                self.panel.set_model_state("✊ Кулак (нет цели)")
-
-        elif name in ("OPEN_PALM", "Open_Palm"):
-            if detail and hasattr(detail, 'open') and not detail.has_animation():
-                self.model.execute_action(detail, 'open')
-                self._start_timer()
-                self.panel.set_model_state(f"✋ Открыть: {detail.name}")
-            else:
-                self.panel.set_model_state("✋ Ладонь (нет цели)")
-
-        elif name in ("THUMB_UP", "Thumb_Up"):
-            self._emergency_stop()
-            self.panel.set_model_state("👍 Аварийный стоп")
-
-        elif name in ("VICTORY", "Victory"):
-            self.panel.set_model_state("✌ Победа (курсор вкл/выкл)")
-
-        else:
-            self.panel.set_model_state(f"Жест: {name} ({confidence:.0%})")
-
-    def _start_ml_client(self):
-        """Запустить поток чтения ML-событий."""
-        import threading
-        import json
-        import socket
-
-        def read_events():
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            try:
-                sock.connect(("127.0.0.1", 8765))
-                buffer = ""
-                while True:
-                    data = sock.recv(4096).decode()
-                    if not data:
-                        break
-                    buffer += data
-                    while "\n" in buffer:
-                        line, buffer = buffer.split("\n", 1)
-                        if line:
-                            event = json.loads(line)
-                            self._ml_event.emit(event)
-            except Exception as e:
-                print(f"ML client: {e}")
-            finally:
-                sock.close()
-
-        self._ml_thread = threading.Thread(target=read_events, daemon=True)
-        self._ml_thread.start()
 
     def _on_ml_event_main(self, event):
         """Вызывается в главном потоке. Интерпретация - в SimulatorController;

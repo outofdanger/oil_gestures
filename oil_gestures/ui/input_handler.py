@@ -1,5 +1,9 @@
+import platform
+
 import vtk
-from PySide6.QtCore import QEvent, Qt, QObject
+from PySide6.QtCore import QEvent, Qt, QObject, QTimer
+from PySide6.QtGui import QCursor
+from PySide6.QtWidgets import QApplication
 
 
 class InputHandler(QObject):
@@ -18,7 +22,24 @@ class InputHandler(QObject):
         self._mouse_press_x = 0
         self._mouse_has_moved = False
 
+        # Один пикер на всё время жизни: создавать vtkCellPicker на каждое
+        # движение мыши дорого и не даёт VTK ничего кэшировать.
+        self._picker = vtk.vtkCellPicker()
+        self._picker.SetTolerance(0.005)
+
         self.plotter.interactor.installEventFilter(self)
+
+        # macOS: VTK-виджет создаётся как нативное окно (WA_PaintOnScreen), и Qt
+        # не доставляет hover-события (mouse move без зажатой кнопки) на нативный
+        # NSView -> подсветка при наведении не работала. На Linux/Windows
+        # событийный путь через eventFilter работает, поэтому там опрос не нужен.
+        self._hover_timer = None
+        if platform.system() == "Darwin":
+            self._last_hover_pos = None
+            self._hover_timer = QTimer(self)
+            self._hover_timer.setInterval(33)  # ~30 Гц, для подсветки достаточно
+            self._hover_timer.timeout.connect(self._poll_hover)
+            self._hover_timer.start()
 
     def eventFilter(self, obj, event):
         if event.type() == QEvent.MouseMove:
@@ -38,17 +59,42 @@ class InputHandler(QObject):
     # ========================
 
     def _pick(self, event):
-        x = event.position().x()
-        y = event.position().y()
+        return self._pick_at(event.position().x(), event.position().y())
+
+    def _pick_at(self, x, y):
+        """Пикинг по координатам в виджете (логические пиксели)."""
         r = self.plotter.renderer
         ws = r.GetSize()
         w = self.plotter.interactor
         vx = int(x * ws[0] / w.width())
         vy = ws[1] - int(y * ws[1] / w.height())
-        picker = vtk.vtkCellPicker()
-        picker.SetTolerance(0.005)
-        picker.Pick(vx, vy, 0, r)
-        return picker.GetActor(), picker.GetPickPosition()
+        self._picker.Pick(vx, vy, 0, r)
+        return self._picker.GetActor(), self._picker.GetPickPosition()
+
+    def _poll_hover(self):
+        """macOS-обходной путь: опросить позицию курсора и подсветить деталь.
+
+        Зеркалит hover из _on_mouse_move без зажатой кнопки, но позицию берёт
+        из глобального курсора (всегда доступна), а не из недоставляемого
+        hover-события."""
+        if QApplication.mouseButtons() != Qt.NoButton:
+            return
+        w = self.plotter.interactor
+        if not w.isVisible():
+            return
+        local = w.mapFromGlobal(QCursor.pos())
+        x, y = local.x(), local.y()
+        if x < 0 or y < 0 or x >= w.width() or y >= w.height():
+            # Курсор ушёл со сцены — один раз снимаем подсветку.
+            if self._last_hover_pos is not None:
+                self._last_hover_pos = None
+                self.controller.on_mouse_move(None)
+            return
+        if (x, y) == self._last_hover_pos:
+            return
+        self._last_hover_pos = (x, y)
+        actor, _ = self._pick_at(x, y)
+        self.controller.on_mouse_move(actor)
 
     # ========================
     # МЫШЬ
