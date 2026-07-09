@@ -10,6 +10,10 @@ class Model:
         self.particle_systems = {}
         self._active = set()
         self._highlighted = None
+        # Ограниченный набор для выбора свайпом (напр. кнопки контроллера при
+        # зуме). None -> дефолтный набор highlightable-деталей. См.
+        # set_selection_scope / _selectable_details.
+        self._selection_scope = None
         self.level_gauge_ui = LevelGaugeUIState()
         self.level_gauge_screen = None
         self.controller_ui = ControllerUIState()
@@ -207,7 +211,17 @@ class Model:
     #  ВЫБОР БЕЗ МЫШИ (SWIPE)
     # ========================
 
+    def set_selection_scope(self, details):
+        """Ограничить набор выбора свайпом заданным списком деталей (напр.
+        кнопки контроллера при зуме). Действует поверх флага highlightable."""
+        self._selection_scope = list(details) if details else None
+
+    def clear_selection_scope(self):
+        self._selection_scope = None
+
     def _selectable_details(self):
+        if self._selection_scope:
+            return self._selection_scope
         return [d for d in self.details if getattr(d, "highlightable", False)]
 
     def highlight_first(self):

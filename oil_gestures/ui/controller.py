@@ -1,7 +1,12 @@
+import time
+
 from PySide6.QtCore import QObject, QPoint, QTimer, Qt, Signal
 from PySide6.QtWidgets import QMenu
 from PySide6.QtGui import QCursor
-from oil_gestures.simulator.details_and_particles import Flap, LevelGaugeCover, LevelGaugeScreen, ControllerScreen, ControllerDoor
+from oil_gestures.simulator.details_and_particles import (
+    Flap, LevelGaugeCover, LevelGaugeScreen, ControllerScreen, ControllerDoor,
+    Valve, Manometer, Plug,
+)
 from PySide6.QtWidgets import QMessageBox
 
 from oil_gestures.integration.contracts import CAMERA_FRAME_CONTRACT
@@ -36,6 +41,13 @@ class Controller(QObject):
         self._level_gauge_zoomed = False
         self._controller_zoomed = False
         self._manometer_zoomed = False
+
+        # Троттлинг ROTATE -> давление: удержание жеста плавно крутит давление
+        # (increase_flow/decrease_flow) не чаще раза в _pressure_cooldown секунд.
+        self._last_pressure_ts = 0.0
+        self._pressure_cooldown = 0.25
+        # Последний показанный режим (для индикации CURSOR/жесты в панели).
+        self._last_cursor_mode = None
 
         self.panel.help_clicked.connect(self._show_help)
         self.panel.emergency_clicked.connect(self._emergency_stop)
@@ -659,6 +671,8 @@ class Controller(QObject):
 
         result = self.simulator_controller.handle_event(event)
 
+        self._reflect_mode(result.cursor_enabled)
+
         if result.gesture_name:
             self.panel.set_gesture(f"{result.gesture_name} ({result.gesture_confidence:.0%})")
 
@@ -675,8 +689,109 @@ class Controller(QObject):
         if result.open_menu and self._open_menu is None:
             self._open_gesture_menu()
 
+        # THUMB_UP -> активировать выбранную деталь (клик по её типу).
+        if result.activate:
+            self._activate_detail(self.model.get_highlighted())
+
+        # SQUEEZE/RELEASE -> зум в выбранный узел / возврат в общий вид.
+        if result.zoom_in:
+            self._zoom_in_selected()
+        if result.zoom_out:
+            self._zoom_out()
+
+        # ROTATE -> давление контроллера (с троттлингом на удержание).
+        if result.pressure_step:
+            self._apply_pressure_step(result.pressure_step)
+
         if result.action_taken:
             self._start_timer()
+
+    def _reflect_mode(self, cursor_enabled):
+        """Показать текущий режим (CURSOR vs жесты) в панели один раз при смене."""
+        if cursor_enabled == self._last_cursor_mode:
+            return
+        self._last_cursor_mode = cursor_enabled
+        self.panel.set_gesture("🖐️ Курсор-режим" if cursor_enabled else "✋ Жестовый режим")
+
+    def _activate_detail(self, detail):
+        """THUMB_UP: выполнить действие выбранной детали по её типу,
+        переиспользуя click-логику коллег (_dispatch_click) для остального."""
+        if detail is None:
+            self.panel.set_model_state("👍 Ничего не выбрано")
+            return
+        name = self.model.get_display_name(detail)
+        if isinstance(detail, Valve):
+            if not detail.has_animation():
+                action = "close" if detail.is_open else "open"
+                self.model.execute_action(detail, action)
+                self._start_timer()
+                self.panel.set_model_state(f"👍 {'Закрыть' if action == 'close' else 'Открыть'}: {name}")
+        elif isinstance(detail, (Manometer, Plug)):
+            removed = getattr(detail, "state", "attached") == "removed"
+            action = "attach" if removed else "remove"
+            self.model.execute_action(detail, action)
+            self.panel.set_inventory(self.model.get_inventory())
+            self._start_timer()
+            self.panel.set_model_state(f"👍 {'Установить' if action == 'attach' else 'Снять'}: {name}")
+        else:
+            # рычаг, дверца, крышка, кнопки контроллера/уровнемера
+            self._dispatch_click(detail)
+
+    def _controller_button_details(self):
+        """Детали-кнопки/рычаг контроллера — для набора выбора свайпом в зуме."""
+        names = {
+            "controller_lever_on_off", "controller_start_button", "controller_stop_button",
+            "controller_button_one", "controller_button_two", "controller_button_top",
+            "controller_button_lower", "controller_button_left", "controller_button_right",
+            "controller_button_center", "controller_button_long", "controller_big_button",
+        }
+        return [d for d in self.model.details if getattr(d, "name", "") in names]
+
+    def _zoom_in_selected(self):
+        """SQUEEZE: приблизиться к выбранному узлу (контроллер/уровнемер/манометр).
+        В зуме контроллера — ограничить свайп-выбор его кнопками."""
+        detail = self.model.get_highlighted()
+        if detail is None:
+            return
+        name = getattr(detail, "name", "") or ""
+        if name.startswith("controller"):
+            self._menu_action(detail, "focus_controller")
+            if self._controller_zoomed:
+                buttons = self._controller_button_details()
+                if buttons:
+                    self.model.set_selection_scope(buttons)
+                    self.model.highlight_first()
+                    self.scene.request_render()
+        elif name.startswith("level_gauge"):
+            self._menu_action(detail, "focus_level_gauge")
+        elif isinstance(detail, Manometer):
+            self._menu_action(detail, "focus_manometer")
+
+    def _zoom_out(self):
+        """RELEASE: вернуться в общий вид (unfocus активного узла)."""
+        detail = self.model.get_highlighted()
+        if self._controller_zoomed:
+            self.model.clear_selection_scope()
+            self._menu_action(detail, "unfocus_controller")
+            self.model.highlight_first()
+            self.scene.request_render()
+        elif self._level_gauge_zoomed:
+            self._menu_action(detail, "unfocus_level_gauge")
+        elif self._manometer_zoomed:
+            self._menu_action(detail, "unfocus_manometer")
+
+    def _apply_pressure_step(self, step):
+        """ROTATE: шаг давления контроллера, не чаще раза в _pressure_cooldown."""
+        now = time.monotonic()
+        if now - self._last_pressure_ts < self._pressure_cooldown:
+            return
+        self._last_pressure_ts = now
+        if step > 0:
+            self.model.controller_ui.increase_flow()
+        else:
+            self.model.controller_ui.decrease_flow()
+        self._refresh_controller_screen()
+        self._start_timer()
 
     # ========================
     # ЖЕСТОВОЕ МЕНЮ (POINTING_INDEX -> открыть, THUMB_UP -> действие)

@@ -9,64 +9,54 @@ from oil_gestures.core.types import GestureResult
 
 CONTRACT_NAME = "oil_gestures.ml.runtime"
 
-# Source of truth for static-gesture -> command mapping: docs/command_mapping.md.
-# Only gestures the static recognizer can actually produce today (canned
-# MediaPipe categories) get a real command. OPEN_PALM has no assigned command
-# in that doc (THUMB_UP replaced it for "open valve") - it is intentionally
-# left unmapped rather than guessed.
+# Static-gesture -> command mapping (docs/command_mapping.md). FIST is dispatched
+# as an emergency stop here; THUMB_UP is handled as a generic "activate selected
+# detail" (the Qt layer decides what activation means per detail type), so it no
+# longer needs a concrete command here beyond marking intent.
 STATIC_GESTURE_COMMANDS: dict[str, str] = {
     "FIST": "EMERGENCY_STOP",
     "THUMB_UP": "OPEN_VALVE",
 }
 
-# Dynamic-channel gestures from docs/command_mapping.md that are still pure
-# display stubs - no trained signal drives them yet. POINTING_INDEX and
-# SWIPE_LEFT/RIGHT are handled separately below (real behaviour, not a stub).
-NOT_IMPLEMENTED_LABELS: dict[GestureName, str] = {
-    GestureName.ROTATE_CLOCKWISE: "🔄 По часовой (давление +)",
-    GestureName.ROTATE_COUNTERCLOCKWISE: "🔄 Против часовой (давление -)",
-}
-
-NOT_IMPLEMENTED_SUFFIX = " - управление пока не реализовано"
-
 
 @dataclass
 class GestureEventResult:
-    """What a single ML contract event means for the scene/UI."""
+    """What a single ML contract event means for the scene/UI. The Qt layer
+    (Controller) reads these flags and performs the actual scene/Qt work."""
 
     message: str | None = None
     action_taken: bool = False
     emergency: bool = False
-    # POINTING_INDEX: ask the Qt layer to open the same context menu right-click
-    # would (SimulatorController has no Qt access of its own).
+    # POINTING_INDEX: open the selected detail's context menu (preview).
     open_menu: bool = False
-    # THUMB_UP executed an armed menu action: ask the Qt layer to close the
-    # context menu it opened for open_menu above.
+    # Close a gesture-opened menu (selection changed / detail activated).
     close_menu: bool = False
-    # Current static gesture for a dedicated, always-accurate UI readout,
-    # independent of the action/log message above.
+    # THUMB_UP: activate/click the currently selected detail.
+    activate: bool = False
+    # SQUEEZE / RELEASE: zoom into the selected assembly / return to main view.
+    zoom_in: bool = False
+    zoom_out: bool = False
+    # ROTATE_CLOCKWISE / CCW: step controller pressure up (+1) / down (-1).
+    pressure_step: int = 0
+    # Whether the cursor (mouse-control) mode is active this frame - the UI uses
+    # it to show the mode and to know scene gestures were intentionally skipped.
+    cursor_enabled: bool = False
+    # Current gesture for a dedicated UI readout, independent of the message.
     gesture_name: str | None = None
     gesture_confidence: float = 0.0
 
 
 class SimulatorController:
     """
-    Owns the "gesture -> scene action" mapping. The concrete static-gesture
-    commands come from docs/command_mapping.md (the current source of truth);
-    docs/interaction_spec.md still defines the channel/mode semantics around
-    it. Takes an already-parsed oil_gestures.ml.runtime contract event and
-    decides what happens to the scene model.
+    Owns the "gesture -> scene action" interpretation (docs/command_mapping.md).
+    Qt-free: it only sets flags on GestureEventResult; the Controller performs
+    the actual scene/Qt work (activation, zoom, pressure, menu), reusing the
+    colleagues' click/focus logic. Stays an autonomous contract consumer per
+    docs/integration_contract.md.
 
-    Knows nothing about Qt/PySide or sockets, so it stays an autonomous
-    consumer of the ML contract as required by docs/integration_contract.md -
-    the UI layer owns the transport, this layer owns the interpretation.
-
-    Menu flow (POINTING_INDEX / THUMB_UP): in cursor-off gesture mode there is
-    no mouse to click a context menu, so THUMB_UP only acts on a detail once
-    POINTING_INDEX has explicitly "armed" it (opened its menu) - mirrors a
-    right-click followed by picking the only available action. ``_armed_detail``
-    tracks this; it resets whenever the selected detail changes (swipe) or once
-    THUMB_UP consumes it.
+    Modes are mutually exclusive: when cursor (mouse-control) mode is on, scene
+    gestures are NOT interpreted here (only cursor status is reported), so a
+    SWIPE/THUMB_UP can't move the scene while the hand is driving the cursor.
     """
 
     def __init__(
@@ -91,9 +81,17 @@ class SimulatorController:
             return GestureEventResult()
 
         cursor = event.get("cursor") or {}
-        # Cursor-off gesture mode has no mouse hover, so nothing would ever
-        # get selected without this: default to the first selectable detail.
-        if not cursor.get("enabled") and self.model.get_highlighted() is None:
+        if cursor.get("enabled"):
+            # Cursor mode: hand drives the OS mouse; scene gestures are muted so
+            # the two modes never fight. Report only the cursor status/mode.
+            return GestureEventResult(
+                cursor_enabled=True,
+                message=self._cursor_message(cursor),
+            )
+
+        # Gesture (navigation/control) mode. No mouse hover here, so nothing
+        # would ever get selected without defaulting to the first detail.
+        if self.model.get_highlighted() is None:
             self.model.highlight_first()
 
         gestures = event.get("gestures") or {}
@@ -106,12 +104,6 @@ class SimulatorController:
             result = self._apply_dynamic_gesture(dynamic)
         else:
             result = GestureEventResult()
-
-        cursor_message = self._cursor_message(cursor)
-        if cursor_message:
-            result.message = (
-                cursor_message if not result.message else f"{result.message}  |  {cursor_message}"
-            )
 
         if result.message is None and not result.action_taken:
             hand = event.get("hand") or {}
@@ -150,8 +142,14 @@ class SimulatorController:
             result.message = "✊ Аварийная остановка течения"
             return result
 
-        if command == CommandName.OPEN_VALVE:
-            self._apply_thumb_up(command_result, result)
+        if gesture_result.name == GestureName.THUMB_UP:
+            # Activate the currently selected detail - the Controller decides
+            # what activation means per type (valve toggle, remove manometer,
+            # press controller button, ...). Close any open preview menu.
+            result.activate = True
+            result.close_menu = True
+            result.action_taken = True
+            result.message = "👍 Активировать выбранное"
             return result
 
         if gesture_result.name == GestureName.VICTORY:
@@ -162,25 +160,6 @@ class SimulatorController:
         # gesture, but do not guess a command for it.
         result.message = self._format_generic(name, confidence)
         return result
-
-    def _apply_thumb_up(self, command_result, result: GestureEventResult) -> None:
-        """THUMB_UP toggles open/close, but only on a detail armed by
-        POINTING_INDEX first (menu opened) - see class docstring."""
-        detail = self.model.get_highlighted()
-
-        if detail is None or detail is not self._armed_detail:
-            result.message = "👍 Сначала откройте меню (👉)"
-            return
-
-        if not (hasattr(detail, "open") and hasattr(detail, "close")) or detail.has_animation():
-            result.message = "👍 Большой палец вверх (нет цели)"
-            return
-
-        action = self._dispatcher.dispatch(command_result, self.model, detail=detail)
-        result.message = f"👍 {'Открыть' if action == 'open' else 'Закрыть'}: {detail.name}"
-        result.action_taken = True
-        result.close_menu = True
-        self._armed_detail = None
 
     def _apply_dynamic_gesture(self, dynamic: dict) -> GestureEventResult:
         name = dynamic.get("name")
@@ -194,15 +173,20 @@ class SimulatorController:
 
         if gesture_name == GestureName.POINTING_INDEX:
             self._apply_pointing_index(result)
-            return result
-
-        if gesture_name == GestureName.SWIPE_LEFT:
+        elif gesture_name == GestureName.SWIPE_LEFT:
             self._apply_swipe(result)
-            return result
-
-        label = NOT_IMPLEMENTED_LABELS.get(gesture_name)
-        if label is not None:
-            result.message = f"{label}{NOT_IMPLEMENTED_SUFFIX}"
+        elif gesture_name == GestureName.ROTATE_CLOCKWISE:
+            result.pressure_step = 1
+            result.message = "🔄 Давление +"
+        elif gesture_name == GestureName.ROTATE_COUNTERCLOCKWISE:
+            result.pressure_step = -1
+            result.message = "🔄 Давление -"
+        elif gesture_name == GestureName.SQUEEZE:
+            result.zoom_in = True
+            result.message = "🤏 Приблизить"
+        elif gesture_name == GestureName.RELEASE:
+            result.zoom_out = True
+            result.message = "🖐 Общий вид"
         return result
 
     def _apply_pointing_index(self, result: GestureEventResult) -> None:
@@ -217,15 +201,12 @@ class SimulatorController:
         result.message = f"👉 Меню: {detail.name}"
 
     def _apply_swipe(self, result: GestureEventResult) -> None:
-        # Single-direction cycling: only SWIPE_LEFT is used (SWIPE_RIGHT is
-        # dropped upstream in gestures.dynamic.model_loader._DISABLED_LABELS,
-        # because a swipe's return stroke reads as the opposite swipe). One
-        # swipe steps forward and wraps last -> first, so every element is
-        # still reachable without a reverse direction to jitter against.
+        # Single-direction cycling (SWIPE_RIGHT is dropped upstream - a swipe's
+        # return stroke reads as the opposite swipe). Steps forward and wraps
+        # last -> first over the current selection scope (all big nodes, or the
+        # controller's buttons when zoomed into it - see Model selection scope).
         self.model.highlight_next()
-        # Selection changed - any menu armed for the previous detail is stale,
-        # so drop the arming AND ask the UI to close that now-orphaned menu
-        # (harmless if none is open - the Qt layer guards on that).
+        # Selection changed - any open preview menu is stale.
         self._armed_detail = None
         result.close_menu = True
         result.action_taken = True
