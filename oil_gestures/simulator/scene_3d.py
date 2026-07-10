@@ -67,6 +67,19 @@ class Scene3D(QWidget):
             self.profile = self.profile.apply(self.plotter)
             self.scheduler.set_fps(self.profile.animation_fps)
             self.scheduler.request_render()
+            self._log_gl_renderer()
+
+    def _log_gl_renderer(self):
+        """Печатает GL_VENDOR/GL_RENDERER — чтобы видеть, на чём реально идёт
+        рендер (железный GPU vs software: llvmpipe / GDI Generic / Microsoft)."""
+        try:
+            caps = self.plotter.render_window.ReportCapabilities() or ""
+            for line in caps.splitlines():
+                low = line.lower()
+                if "opengl vendor" in low or "opengl renderer" in low or "opengl version" in low:
+                    print("GL:", line.strip())
+        except Exception:
+            pass
 
     def request_render(self):
         """Запросить одиночную перерисовку (коалесцируется планировщиком)."""

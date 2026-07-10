@@ -44,6 +44,11 @@ _system = platform.system()
 # GPU-контекстах. setdefault => можно переопределить из шелла (OIL_AA=fxaa ...).
 os.environ.setdefault("OIL_AA", "none")
 
+# Аппаратный desktop OpenGL вместо ANGLE/софтового рендера (иначе на Windows
+# сцена может рисоваться на CPU при неактивном GPU). Наследуется UI-подпроцессом;
+# app/ui_main.py дублирует это + атрибут AA_UseDesktopOpenGL для прямого запуска.
+os.environ.setdefault("QT_OPENGL", "desktop")
+
 # Заставляем рисовать 3D на дискретной NVIDIA. Способ зависит от ОС:
 _gpu_mode = "по умолчанию (встроенный GPU / выбор ОС)"
 if _system == "Linux" and os.path.exists("/proc/driver/nvidia"):
