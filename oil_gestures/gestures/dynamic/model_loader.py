@@ -206,11 +206,12 @@ class DynamicModelLoaderConfig:
     veto_floor: float = 0.20
     # EMA weight for the newest frame in each model's own probability smoother.
     smoothing_alpha: float = 0.5
-    # After a direction (SWIPE_LEFT, ROTATE_CW, SQUEEZE, ...) is active, its
-    # opposite is suppressed for this long - the hand's return stroke reads as
-    # the opposite gesture and would undo the action. Larger = safer against
-    # accidental reversals but slower to switch direction on purpose.
-    directional_lockout_seconds: float = 1.2
+    # Rest floor for the directional lockout: after a direction is active, its
+    # opposite is suppressed until the hand rests for this long. NOT the return
+    # duration (the return is suppressed until the hand actually stops, however
+    # long). Small - just enough that a momentary rest mid-return doesn't
+    # prematurely re-enable the opposite.
+    directional_lockout_seconds: float = 0.4
 
 
 def _ensemble_decision(
@@ -398,26 +399,30 @@ class EnsembleDynamicGestureModel:
         label = _ensemble_decision(
             stgcn_probs, bilstm_probs, self._class_names, self.config.min_confidence, self.config.veto_floor
         )
+        ts = packet.timestamp
         if label is None:
-            # Hand at rest / no confident gesture: re-arm so the next discrete
-            # gesture can fire. This is the boundary that ends one swipe's
-            # refractory window.
+            # Hand at rest: re-arm the discrete refractory. Also release the
+            # directional lock, but only after a short settle (rest floor) so a
+            # momentary rest mid-return doesn't prematurely re-enable the
+            # opposite. The return stroke itself never reaches here - it's a
+            # confident opposite gesture, suppressed below.
             self._ready_to_fire = True
+            if ts - self._last_dir_ts >= self.config.directional_lockout_seconds:
+                self._last_dir_label = None
             return None
 
-        # Directional lockout: if this label is the opposite of a direction that
-        # was active within directional_lockout_seconds, it is the return stroke
-        # of that gesture - suppress it (without re-anchoring the lockout, so the
-        # lockout stays measured from the real direction). Otherwise record it as
-        # the active direction. Lets both directions of a pair stay enabled
-        # (SWIPE_LEFT/RIGHT, ROTATE_CW/CCW, SQUEEZE/RELEASE) without rollbacks.
+        # Directional lockout, gated on REST (not a fixed timer): after a
+        # direction is active, its opposite - the hand's return stroke - is
+        # suppressed until the hand actually returns to rest, however long that
+        # takes. This fixes slow returns leaking past a timer, without slowing a
+        # deliberate reversal (which starts from rest). Covers all pairs:
+        # SWIPE_LEFT/RIGHT, ROTATE_CW/CCW, SQUEEZE/RELEASE.
         opposite = _OPPOSITE_LABELS.get(label)
         if opposite is not None:
-            ts = packet.timestamp
-            if (
-                self._last_dir_label == opposite
-                and ts - self._last_dir_ts < self.config.directional_lockout_seconds
-            ):
+            if self._last_dir_label == opposite:
+                # Return stroke of the locked direction: suppress, and keep the
+                # lock fresh so the rest floor is measured from the ongoing motion.
+                self._last_dir_ts = ts
                 return None
             self._last_dir_label = label
             self._last_dir_ts = ts

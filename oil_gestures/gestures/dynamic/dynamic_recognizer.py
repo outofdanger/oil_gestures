@@ -30,10 +30,11 @@ class DynamicRecognizerConfig:
     # available, else CPU. "cuda"/"cpu" force it. The models and their per-frame
     # inputs are moved to this device in gestures.dynamic.model_loader.
     device: str = "auto"
-    # After a direction fires (swipe/rotate/squeeze), its opposite is suppressed
-    # for this long, so the hand's return stroke doesn't undo the action. Lets
-    # both directions of each pair stay enabled without back-and-forth jitter.
-    directional_lockout_seconds: float = 1.2
+    # Rest floor for the directional lockout (gestures.dynamic.model_loader):
+    # after a direction fires, its opposite is suppressed until the hand rests
+    # for this long. The return stroke is suppressed until the hand actually
+    # stops (any duration), so this stays small.
+    directional_lockout_seconds: float = 0.4
     # Checkpoint pair loaded by load_dynamic_model() in
     # gestures.dynamic.model_loader, which runs the "ST-GCN leads + BiLSTM
     # confirms" ensemble (validated live in
