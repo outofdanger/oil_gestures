@@ -203,13 +203,25 @@ def resample_sequence(landmarks: np.ndarray, target_len: int) -> np.ndarray:
     return resampled.reshape(target_len, landmarks.shape[1], landmarks.shape[2])
 
 
-def normalize_sequence(landmarks: np.ndarray, min_scale: float = MIN_SCALE) -> np.ndarray | None:
+def normalize_sequence(
+    landmarks: np.ndarray, min_scale: float = MIN_SCALE, anchor: str = "per_frame"
+) -> np.ndarray | None:
     wrist = landmarks[:, WRIST_INDEX : WRIST_INDEX + 1, :]
-    centered = landmarks - wrist
-    distances = np.linalg.norm(centered[:, MIDDLE_MCP_INDEX, :], axis=-1)
+    relative = landmarks - wrist
+    distances = np.linalg.norm(relative[:, MIDDLE_MCP_INDEX, :], axis=-1)
     scale = float(np.mean(distances))
     if scale < min_scale:
         return None
+    if anchor == "per_frame":
+        # Legacy mode: every frame re-centered at its own wrist. Hand pose only;
+        # global translation of the hand is erased.
+        return (relative / scale).astype(np.float32)
+    if anchor != "first_frame":
+        raise ValueError(f"Unknown anchor mode '{anchor}'; expected 'per_frame' or 'first_frame'.")
+    # Anchor the whole window at the FIRST frame's wrist: per-frame pose keeps its
+    # global trajectory, so translation-driven gestures (swipes, drifts) remain
+    # visible after normalization. Scale stays the per-frame hand size average.
+    centered = landmarks - wrist[:1]
     return (centered / scale).astype(np.float32)
 
 
