@@ -30,7 +30,7 @@ runtime integration. Until then, `--cursor-on` is available for manual testing.
 
 ## Manual Checks
 
-- Confirm `python --version` reports CPython 3.14.x (validated baseline: 3.14.6).
+- Confirm `python --version` reports CPython 3.12.x (validated baseline: 3.12.3).
 - Run `python -m pip check` and `python -m pytest -q` inside the project virtual environment.
 - Run `python scripts/check_camera.py` on a machine with webcam permission.
 - Run `python scripts/run_demo.py --cursor-on` to inspect cursor recognition in dry-run mode.

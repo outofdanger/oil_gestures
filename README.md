@@ -57,18 +57,17 @@ tests/                 Unit tests for pure logic
 
 ## Setup
 
-The supported runtime is standard **CPython 3.14.x**; the repository pins
-CPython 3.14.6 in `.python-version`. The free-threaded `3.14t` build is not part
-of the supported runtime yet.
+The supported runtime is standard **CPython 3.12.x**; the repository pins
+CPython 3.12.3 in `.python-version`.
 
 ```bash
-python3.14 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-On Windows, create the environment with `py -3.14 -m venv .venv` and activate
+On Windows, create the environment with `py -3.12 -m venv .venv` and activate
 it with `.venv\Scripts\activate`.
 
 macOS needs Camera permission for the app that runs Python. Accessibility

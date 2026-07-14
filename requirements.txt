@@ -1,5 +1,5 @@
-# Direct runtime dependencies. Requires standard CPython 3.14.x.
-# Validated with CPython 3.14.6 (the free-threaded 3.14t build is not supported yet).
+# Direct runtime dependencies. Requires standard CPython 3.12.x.
+# Validated with CPython 3.12.3.
 mediapipe==0.10.35
 
 # MediaPipe depends on the contrib distribution. Do not install opencv-python
