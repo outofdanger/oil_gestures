@@ -125,6 +125,9 @@ class MediaPipeGestureRecognizer:
         if not landmarks:
             return LandmarkPacket(False, None, Handedness.UNKNOWN, 0.0, frame_packet.timestamp)
 
+        world_landmarks_list = list(getattr(result, "hand_world_landmarks", None) or [])
+        world_landmarks = world_landmarks_list[0] if world_landmarks_list else None
+
         handedness = Handedness.UNKNOWN
         confidence = 1.0
         if getattr(result, "handedness", None):
@@ -152,6 +155,7 @@ class MediaPipeGestureRecognizer:
             timestamp=frame_packet.timestamp,
             raw_gesture=raw_gesture,
             raw_gesture_score=raw_gesture_score,
+            world_landmarks=world_landmarks,
         )
 
     @staticmethod

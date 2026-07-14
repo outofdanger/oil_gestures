@@ -32,10 +32,21 @@ class CursorActionMapper:
     def from_strings(cls, mapping: Mapping[str, str] | None = None) -> "CursorActionMapper":
         if mapping is None:
             return cls()
-        parsed = {
-            GestureName(gesture_name): CursorAction(action_name)
-            for gesture_name, action_name in mapping.items()
-        }
+        parsed: dict[GestureName, CursorAction] = {}
+        for gesture_name, action_name in mapping.items():
+            gesture = GestureName(gesture_name)
+            # Cursor mappings accept only cursor-channel gestures. A name that is
+            # a valid GestureName but belongs to another channel (e.g. the
+            # dynamic "SQUEEZE" vs the cursor "INDEX_SQUEEZE") is rejected here so
+            # a mis-typed config fails loudly instead of silently mapping a
+            # non-cursor gesture onto a cursor action.
+            if gesture not in DEFAULT_CURSOR_MAPPING:
+                accepted = ", ".join(sorted(g.value for g in DEFAULT_CURSOR_MAPPING))
+                raise ValueError(
+                    f"{gesture_name!r} is not a cursor gesture; "
+                    f"cursor mappings accept only: {accepted}"
+                )
+            parsed[gesture] = CursorAction(action_name)
         return cls(CursorActionMapperConfig(parsed))
 
     def map(

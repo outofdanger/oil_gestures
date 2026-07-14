@@ -126,9 +126,29 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=0.20,
         help=(
             "ENSEMBLE only: minimum BiLSTM probability for the ST-GCN-proposed class to count "
-            "as CONFIRMED. If BiLSTM gives it less than this AND it is not in BiLSTM's top-2, the "
-            "trigger is VETOED (suppressed). Lower = trust ST-GCN more (snappier, more false fires); "
-            "higher = stricter confirmation (fewer false fires, slightly slower)."
+            "as CONFIRMED; below it the trigger is VETOED (suppressed). Lower = trust ST-GCN "
+            "more (snappier, more false fires); higher = stricter confirmation."
+        ),
+    )
+    parser.add_argument(
+        "--legacy-veto",
+        action="store_true",
+        default=False,
+        help=(
+            "Restore the legacy confirmation escape hatch: confirm a trigger when the proposed "
+            "class merely ranks in BiLSTM's top-2, even at negligible probability. Kept only for "
+            "A/B comparison against old checkpoints."
+        ),
+    )
+    parser.add_argument(
+        "--motion-gate",
+        type=float,
+        default=0.025,
+        help=(
+            "Minimum window motion (mean per-frame displacement of wrist-centered normalized "
+            "landmarks) required to run recognition at all; below it the window is IDLE by "
+            "definition. On this dataset IDLE sits near 0.013 and the quietest gestures near "
+            "0.045. Set 0 to disable."
         ),
     )
     parser.add_argument(
@@ -182,15 +202,21 @@ def load_dynamic_model(
     return model, checkpoint, "bilstm"
 
 
+def checkpoint_anchor(checkpoint: dict[str, Any]) -> str:
+    """Wrist-anchoring mode the checkpoint was trained with (older checkpoints: per_frame)."""
+    normalization = checkpoint.get("normalization") or {}
+    return normalization.get("anchor", "per_frame")
+
+
 def window_to_features(
-    window: list[np.ndarray], target_len: int, add_velocity: bool
+    window: list[np.ndarray], target_len: int, add_velocity: bool, anchor: str
 ) -> np.ndarray | None:
     """Replicate the BiLSTM dataset preprocessing for one rolling window of image landmarks."""
     landmarks = np.stack(window).astype(np.float32)  # (T, 21, 3)
     if not np.isfinite(landmarks).all():
         return None
     resampled = resample_sequence(landmarks, target_len)
-    normalized = normalize_sequence(resampled)
+    normalized = normalize_sequence(resampled, anchor=anchor)
     if normalized is None:
         return None
     flattened = normalized.reshape(target_len, -1)
@@ -198,17 +224,50 @@ def window_to_features(
     return features.astype(np.float32)
 
 
-def window_to_stgcn_input(window_world: list[np.ndarray], target_len: int) -> np.ndarray | None:
-    """Replicate the ST-GCN dataset preprocessing: world landmarks -> (1, C, T, V, M=1)."""
-    landmarks = np.stack(window_world).astype(np.float32)  # (T, 21, 3)
-    if not np.isfinite(landmarks).all():
+def window_to_stgcn_input(
+    window_world: list[np.ndarray],
+    window_image: list[np.ndarray],
+    target_len: int,
+    anchor: str,
+    channels: int,
+) -> np.ndarray | None:
+    """Replicate the ST-GCN dataset preprocessing -> (1, C, T, V, M=1).
+
+    3-channel checkpoints see per-frame-normalized world landmarks (pose only).
+    6-channel checkpoints additionally see first-frame-anchored image landmarks,
+    which carry the hand's global trajectory across the window.
+    """
+    world = np.stack(window_world).astype(np.float32)  # (T, 21, 3)
+    if not np.isfinite(world).all():
         return None
-    resampled = resample_sequence(landmarks, target_len)
-    normalized = normalize_sequence(resampled)
-    if normalized is None:
+    pose = normalize_sequence(resample_sequence(world, target_len))
+    if pose is None:
         return None
-    graph = np.transpose(normalized, (2, 0, 1))  # (C, T, V)
+    if channels == 6:
+        image = np.stack(window_image).astype(np.float32)
+        if not np.isfinite(image).all():
+            return None
+        motion = normalize_sequence(resample_sequence(image, target_len), anchor=anchor)
+        if motion is None:
+            return None
+        combined = np.concatenate([pose, motion], axis=-1)  # (T, V, 6)
+    else:
+        combined = pose
+    graph = np.transpose(combined, (2, 0, 1))  # (C, T, V)
     return graph[np.newaxis, ..., np.newaxis].astype(np.float32)  # (1, C, T, V, 1)
+
+
+def window_pose_motion(window: list[np.ndarray], target_len: int) -> float:
+    """Model-independent motion magnitude of the window: mean per-frame displacement
+    of per-frame wrist-centered normalized image landmarks. On this dataset IDLE
+    sits near 0.013 and the quietest gestures near 0.045."""
+    landmarks = np.stack(window).astype(np.float32)
+    if not np.isfinite(landmarks).all():
+        return 0.0
+    normalized = normalize_sequence(resample_sequence(landmarks, target_len))
+    if normalized is None:
+        return 0.0
+    return float(np.mean(np.linalg.norm(np.diff(normalized, axis=0), axis=-1)))
 
 
 def classify_window(
@@ -218,11 +277,19 @@ def classify_window(
     target_len: int,
     add_velocity: bool,
     device: "torch.device",
+    anchor: str,
+    stgcn_channels: int = 3,
 ) -> np.ndarray | None:
     if kind == "stgcn":
-        model_input = window_to_stgcn_input([world for _, world in window_entries], target_len)
+        model_input = window_to_stgcn_input(
+            [world for _, world in window_entries],
+            [image for image, _ in window_entries],
+            target_len,
+            anchor,
+            stgcn_channels,
+        )
     else:
-        flat = window_to_features([image for image, _ in window_entries], target_len, add_velocity)
+        flat = window_to_features([image for image, _ in window_entries], target_len, add_velocity, anchor)
         model_input = flat[np.newaxis, ...] if flat is not None else None
     if model_input is None:
         return None
@@ -237,13 +304,19 @@ def ensemble_decision(
     class_names: list[str],
     min_confidence: float,
     veto_floor: float,
+    allow_top2: bool = False,
 ) -> tuple[str | None, bool]:
     """Live dual-model logic: ST-GCN LEADS (fast trigger), BiLSTM CONFIRMS (veto).
 
     ST-GCN reads the spatial hand pose, so it crosses the confidence threshold earlier
-    than the motion/velocity-driven BiLSTM — it drives the trigger. BiLSTM is used only
-    to suppress ST-GCN's false fires: the proposed class is CONFIRMED if BiLSTM gives it
-    at least ``veto_floor`` probability OR ranks it in its top-2; otherwise it is VETOED.
+    than the motion/velocity-driven BiLSTM — it drives the trigger. BiLSTM suppresses
+    ST-GCN's false fires: the proposed class is CONFIRMED only if BiLSTM gives it at
+    least ``veto_floor`` probability; otherwise it is VETOED.
+
+    ``allow_top2`` restores the legacy escape hatch (confirm when the lead merely ranks
+    in BiLSTM's top-2). With 8 classes and IDLE absorbing most of the probability mass
+    on a still hand, rank #2 can mean ~5% probability — the hatch confirms nearly every
+    false trigger, which is why it is off by default.
 
     Returns (fired_label or None, vetoed).
     """
@@ -251,8 +324,10 @@ def ensemble_decision(
     lead_label = class_names[lead]
     if lead_label == BASELINE_LABEL or float(stgcn_probs[lead]) < min_confidence:
         return None, False
-    bilstm_top2 = {int(i) for i in np.argsort(bilstm_probs)[::-1][:2]}
-    confirmed = float(bilstm_probs[lead]) >= veto_floor or lead in bilstm_top2
+    confirmed = float(bilstm_probs[lead]) >= veto_floor
+    if allow_top2 and not confirmed:
+        bilstm_top2 = {int(i) for i in np.argsort(bilstm_probs)[::-1][:2]}
+        confirmed = lead in bilstm_top2
     if confirmed:
         return lead_label, False
     return None, True
@@ -264,17 +339,21 @@ def draw_ensemble_overlay(
     stgcn_probs: np.ndarray | None,
     bilstm_probs: np.ndarray | None,
     vetoed: bool,
+    gated: bool = False,
 ) -> None:
-    """Show both models' top class and the confirm/veto state (ensemble mode only)."""
-    if stgcn_probs is None or bilstm_probs is None:
+    """Show both models' top class and the gate/confirm/veto state (ensemble mode only)."""
+    if gated:
+        lines = [("GATED (no motion)", (160, 160, 160))]
+    elif stgcn_probs is None or bilstm_probs is None:
         return
-    s_i = int(np.argmax(stgcn_probs))
-    b_i = int(np.argmax(bilstm_probs))
-    lines = [
-        (f"ST-GCN lead : {class_names[s_i]:<24} {float(stgcn_probs[s_i]) * 100:4.0f}%", (120, 200, 255)),
-        (f"BiLSTM conf : {class_names[b_i]:<24} {float(bilstm_probs[b_i]) * 100:4.0f}%", (200, 200, 120)),
-        ("VETOED" if vetoed else "CONFIRMED", (60, 60, 255) if vetoed else (60, 230, 120)),
-    ]
+    else:
+        s_i = int(np.argmax(stgcn_probs))
+        b_i = int(np.argmax(bilstm_probs))
+        lines = [
+            (f"ST-GCN lead : {class_names[s_i]:<24} {float(stgcn_probs[s_i]) * 100:4.0f}%", (120, 200, 255)),
+            (f"BiLSTM conf : {class_names[b_i]:<24} {float(bilstm_probs[b_i]) * 100:4.0f}%", (200, 200, 120)),
+            ("VETOED" if vetoed else "CONFIRMED", (60, 60, 255) if vetoed else (60, 230, 120)),
+        ]
     x = max(14, frame.shape[1] - 360)
     y = frame.shape[0] - 96
     for text, color in lines:
@@ -412,10 +491,13 @@ def main() -> int:
     # Single-model state (used when not in ensemble mode).
     model = checkpoint = kind = None
     add_velocity = False
+    anchor = "per_frame"
+    stgcn_channels = 3
     # Ensemble state (used when in ensemble mode).
     stgcn_model = bilstm_model = None
     bilstm_target_len = 0
     bilstm_add_velocity = False
+    stgcn_anchor = bilstm_anchor = "per_frame"
 
     if ensemble_mode:
         stgcn_path = resolve_path(args.stgcn_checkpoint)
@@ -436,6 +518,9 @@ def main() -> int:
         target_len: int = int(stgcn_ckpt["target_len"])
         bilstm_target_len = int(bilstm_ckpt["target_len"])
         bilstm_add_velocity = bool(bilstm_ckpt.get("add_velocity", False))
+        stgcn_anchor = checkpoint_anchor(stgcn_ckpt)
+        bilstm_anchor = checkpoint_anchor(bilstm_ckpt)
+        stgcn_channels = int(stgcn_ckpt.get("in_channels", 3))
         window = args.window if args.window is not None else max(target_len, bilstm_target_len)
     else:
         checkpoint_path = resolve_path(args.checkpoint)
@@ -448,6 +533,8 @@ def main() -> int:
         class_names = list(checkpoint["class_names"])
         target_len = int(checkpoint["target_len"])
         add_velocity = bool(checkpoint.get("add_velocity", False))
+        anchor = checkpoint_anchor(checkpoint)
+        stgcn_channels = int(checkpoint.get("in_channels", 3))
         window = args.window if args.window is not None else target_len
 
     if window < 2:
@@ -457,7 +544,10 @@ def main() -> int:
         print(f"ENSEMBLE mode | Device: {device} | window={window} frames")
         print(f"  ST-GCN (lead/trigger): {resolve_path(args.stgcn_checkpoint)}")
         print(f"  BiLSTM (confirm/veto): {resolve_path(args.bilstm_checkpoint)}")
-        print(f"  min_confidence={args.min_confidence} | veto_floor={args.veto_floor} | smoothing={args.smoothing}")
+        print(
+            f"  min_confidence={args.min_confidence} | veto_floor={args.veto_floor} | "
+            f"motion_gate={args.motion_gate} | legacy_veto={args.legacy_veto} | smoothing={args.smoothing}"
+        )
     else:
         print(f"Loaded checkpoint: {resolve_path(args.checkpoint)}")
         print(f"Model: {kind.upper()} | Device: {device} | window={window} frames | target_len={target_len}")
@@ -515,14 +605,27 @@ def main() -> int:
                 probabilities: np.ndarray | None = None
                 fired_label: str | None = None
                 ens_vetoed = False
+                ens_gated = False
                 ens_stgcn: np.ndarray | None = None
                 ens_bilstm: np.ndarray | None = None
                 if len(buffer) >= window:
                     entries = list(buffer)
-                    if ensemble_mode:
-                        s = classify_window(stgcn_model, "stgcn", entries, target_len, False, device)
+                    # Motion gate: a window whose pose barely moves is IDLE by definition —
+                    # don't even ask the models. Also drop the probability smoothing state so
+                    # a following gesture starts from fresh probabilities, not stale ones.
+                    if args.motion_gate > 0:
+                        motion = window_pose_motion([image for image, _ in entries], target_len)
+                        ens_gated = motion < args.motion_gate
+                    if ens_gated:
+                        smoothed_probabilities = None
+                        smoothed_stgcn = None
+                        smoothed_bilstm = None
+                    elif ensemble_mode:
+                        s = classify_window(
+                            stgcn_model, "stgcn", entries, target_len, False, device, stgcn_anchor, stgcn_channels
+                        )
                         b = classify_window(
-                            bilstm_model, "bilstm", entries, bilstm_target_len, bilstm_add_velocity, device
+                            bilstm_model, "bilstm", entries, bilstm_target_len, bilstm_add_velocity, device, bilstm_anchor
                         )
                         if s is not None and b is not None:
                             smoothed_stgcn = (
@@ -536,12 +639,19 @@ def main() -> int:
                                 else args.smoothing * b + (1.0 - args.smoothing) * smoothed_bilstm
                             )
                             fired_label, ens_vetoed = ensemble_decision(
-                                smoothed_stgcn, smoothed_bilstm, class_names, args.min_confidence, args.veto_floor
+                                smoothed_stgcn,
+                                smoothed_bilstm,
+                                class_names,
+                                args.min_confidence,
+                                args.veto_floor,
+                                allow_top2=args.legacy_veto,
                             )
                             probabilities = smoothed_stgcn  # ST-GCN is the displayed lead
                             ens_stgcn, ens_bilstm = smoothed_stgcn, smoothed_bilstm
                     else:
-                        frame_probabilities = classify_window(model, kind, entries, target_len, add_velocity, device)
+                        frame_probabilities = classify_window(
+                            model, kind, entries, target_len, add_velocity, device, anchor, stgcn_channels
+                        )
                         if frame_probabilities is not None:
                             if smoothed_probabilities is None:
                                 smoothed_probabilities = frame_probabilities
@@ -587,7 +697,7 @@ def main() -> int:
                     latched_label,
                 )
                 if ensemble_mode:
-                    draw_ensemble_overlay(display_frame, class_names, ens_stgcn, ens_bilstm, ens_vetoed)
+                    draw_ensemble_overlay(display_frame, class_names, ens_stgcn, ens_bilstm, ens_vetoed, ens_gated)
                 cv2.imshow(WINDOW_NAME, display_frame)
 
                 key = cv2.waitKey(1) & 0xFF

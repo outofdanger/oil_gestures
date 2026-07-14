@@ -5,10 +5,11 @@ endpoint and speaks the exact same versioned contract, but generates scripted
 fake data instead of using a camera or MediaPipe.
 
 UI and 3D developers run this INSTEAD of the full ML pipeline, so they can build
-and test their reactions without a webcam, without models, and in CI. It also
-emits gestures that ML does not produce yet (swipes, valve, wrist rotation),
-matching the frozen vocabulary in docs/interaction_spec.md. When the real ML is
-ready, the stream is identical and consumers need no changes.
+and test their reactions without a webcam, without a trained dynamic model, and
+in CI. Gesture names match oil_gestures.core.enums.GestureName exactly (the
+single source of truth - see docs/command_mapping.md for what each one does),
+so the stream looks identical to the real ML producer and consumers need no
+changes when switching between them.
 
 Run:
     python scripts/mock_ml_events.py
@@ -54,20 +55,22 @@ SCREEN_HEIGHT = 1080
 STEP_SECONDS = 1.2
 
 # (channel, gesture_name, source). channel is one of static/dynamic/cursor.
-# Covers the full frozen vocabulary from docs/interaction_spec.md, including
-# gestures the real ML does not produce yet ("planned").
+# gesture_name must be a value of oil_gestures.core.enums.GestureName - this
+# used to drift from it (WRIST_ROTATE_CW/CCW, SPREAD, CLENCH, POINT, OK_SIGN),
+# which meant testing against this mock did not exercise the same code paths
+# real events do. OK_SIGN has no entry: THUMB_UP replaced it for "open valve"
+# (see docs/command_mapping.md item 6) and it is not in GestureName at all.
 SCENARIO: tuple[tuple[str, str, str], ...] = (
     ("static", "OPEN_PALM", "STATIC_RULES"),
     ("static", "FIST", "STATIC_RULES"),
     ("static", "THUMB_UP", "STATIC_RULES"),
-    ("static", "OK_SIGN", "STATIC_RULES"),
-    ("static", "POINT", "STATIC_RULES"),
+    ("dynamic", "POINTING_INDEX", "DYNAMIC_MODEL"),
     ("dynamic", "SWIPE_LEFT", "DYNAMIC_MODEL"),
     ("dynamic", "SWIPE_RIGHT", "DYNAMIC_MODEL"),
-    ("dynamic", "SPREAD", "DYNAMIC_MODEL"),
-    ("dynamic", "CLENCH", "DYNAMIC_MODEL"),
-    ("dynamic", "WRIST_ROTATE_CW", "DYNAMIC_MODEL"),
-    ("dynamic", "WRIST_ROTATE_CCW", "DYNAMIC_MODEL"),
+    ("dynamic", "RELEASE", "DYNAMIC_MODEL"),
+    ("dynamic", "SQUEEZE", "DYNAMIC_MODEL"),
+    ("dynamic", "ROTATE_CLOCKWISE", "DYNAMIC_MODEL"),
+    ("dynamic", "ROTATE_COUNTERCLOCKWISE", "DYNAMIC_MODEL"),
     ("cursor", "INDEX_MCP", "CURSOR_RULES"),
     ("cursor", "INDEX_SQUEEZE", "CURSOR_RULES"),
     ("cursor", "INDEX_RELEASE", "CURSOR_RULES"),

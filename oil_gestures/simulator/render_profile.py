@@ -35,6 +35,13 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() not in {"0", "false", "off", "no", ""}
+
+
 @dataclass(frozen=True)
 class RenderProfile:
     """Параметры рендера, подобранные под текущую ОС/железо.
@@ -51,6 +58,11 @@ class RenderProfile:
     desired_update_rate: float # целевой FPS LOD во время интеракции (VTK)
     still_update_rate: float   # целевой FPS в покое (VTK)
     particle_count: int        # частиц на систему (рычаг качества/нагрузки)
+    # Рисовать частицы как сферы (шейдер точек-сфер) или как плоские точки.
+    # Шейдер сфер требует рабочей компиляции GLSL; на некоторых Windows/GPU
+    # контекстах он не собирается (как и SSAA) -> частицы не видно. Тогда
+    # OIL_POINT_SPHERES=0 включает плоские точки (базовый GL, работает везде).
+    point_spheres: bool
 
     # --------------------------------------------------------------- detect
     @classmethod
@@ -89,6 +101,7 @@ class RenderProfile:
             desired_update_rate=desired,
             still_update_rate=still,
             particle_count=_env_int("OIL_PARTICLES", particle_count),
+            point_spheres=_env_bool("OIL_POINT_SPHERES", True),
         )
 
     # ---------------------------------------------------------------- apply
@@ -144,6 +157,8 @@ class RenderProfile:
             animation_fps=min(self.animation_fps, 30),
             desired_update_rate=min(self.desired_update_rate, 12.0),
             particle_count=min(self.particle_count, 300),
+            # Software-GL часто не тянет шейдер сфер - плоские точки надёжнее.
+            point_spheres=False,
         )
 
 

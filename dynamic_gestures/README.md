@@ -1,30 +1,55 @@
-# `dynamic_gestures/` — dynamic-gesture subsystem
+# `dynamic_gestures/` — dynamic-gesture training pipeline
 
-Everything related to the dynamic-gesture model lives here: the live in-app
-recognizer, the offline ML pipeline (collection → preprocessing → training →
-verification), the datasets and the trained checkpoints.
+This is the **offline** side of the dynamic-gesture model: collection →
+preprocessing → training → verification, plus the datasets and the trained
+checkpoints it produces. The **live, in-app recognizer is not here** - it
+lives in `oil_gestures/gestures/dynamic/` (see below), which is the actual
+package `app/main.py` imports.
 
 ## Layout
 
 ```
 dynamic_gestures/
-├── runtime/      In-app recognizer used by the live application.
-│                 DynamicGestureRecognizer, SequenceBuffer, the model Protocol.
 ├── scripts/      Offline ML pipeline (run from the repository root).
 ├── data/
 │   ├── raw/      Raw MediaPipe landmark recordings, one folder per gesture.
 │   └── processed/  Preprocessed tensors (.pt), manifests and training reports.
-└── models/       Trained PyTorch checkpoints (dynamic_bilstm.pt, dynamic_stgcn.pt, ...).
+└── models/       Trained PyTorch checkpoint variants (dynamic_bilstm.pt,
+                  dynamic_stgcn.pt, ...) produced while experimenting. The one
+                  actually used by the live app is copied to
+                  assets/models/pytorch/ - see below.
 ```
 
-`data/` and `models/*.pt|*.onnx` are git-ignored (only `.gitkeep` is tracked).
+`data/` is git-ignored (only `.gitkeep` is tracked). `models/*.pt` **are**
+committed (despite earlier docs here claiming otherwise) - they're the
+training experiment outputs kept for comparison/`check_dynamic_model.py`.
 
 ## Relationship to the rest of the project
 
-- The runtime recognizer was moved out of `oil_gestures/gestures/dynamic/`. That
-  original location now contains thin compatibility shims that re-export from
-  `dynamic_gestures.runtime`, so `app/main.py`, `app/app_config.py` and the tests
-  keep importing `oil_gestures.gestures.dynamic.*` unchanged.
+- The live recognizer (`DynamicGestureRecognizer`, `SequenceBuffer`, the model
+  Protocol, and `model_loader.py` which loads a trained checkpoint) lives in
+  `oil_gestures/gestures/dynamic/`, not here. There used to be a duplicate
+  runtime copy under `dynamic_gestures/runtime/` (this README previously
+  claimed it was the canonical one and `oil_gestures/gestures/dynamic/` was
+  just a re-export shim) - that was never actually true; both copies were
+  full, independent implementations, and nothing outside this package
+  imported `dynamic_gestures.runtime`. It has been removed as dead code.
+- The live app runs a dual-model ensemble, not a single checkpoint: it loads
+  both `assets/models/pytorch/dynamic_stgcn_transition.pt` and
+  `assets/models/pytorch/dynamic_bilstm_transition.pt`. ST-GCN (reads
+  world-landmark hand pose) leads as the fast trigger; BiLSTM (reads
+  image-landmark motion/velocity) confirms or vetoes it - see
+  `oil_gestures/gestures/dynamic/model_loader.py`'s `_ensemble_decision`,
+  ported from this same `test_dynamic_model.py`'s `ensemble_decision`, where
+  the scheme was first validated on a live camera. Config:
+  `DynamicRecognizerConfig.stgcn_checkpoint_path` / `.bilstm_checkpoint_path`
+  in `configs/gestures.yaml`.
+- The `_transition` checkpoints add a 9th class **TRANSITION** (time-reversed
+  swipes = the hand's return stroke). The runtime drops TRANSITION predictions
+  (not a `GestureName`), so a return stroke reads as "no gesture" instead of
+  the opposite swipe - this kills return-stroke false-opposites at the source.
+  The older 8-class `_merged` pair (and `_no_point` variants) stay in
+  `models/` / `assets/models/pytorch/` for reference/comparison, not loaded.
 - The pipeline scripts still import the shared `oil_gestures` runtime package
   (`vision.*`, `core.*`). They add the repository root to `sys.path` themselves,
   so run them from anywhere; paths resolve against the repo root.

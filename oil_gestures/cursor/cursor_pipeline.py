@@ -20,6 +20,9 @@ class CursorPipelineState:
     valid_detection_frames: int = 0
     last_seen_time: float | None = None
     last_action_times: dict[CursorAction, float] = field(default_factory=dict)
+    # Absolute screen point where the current grab started; movement while
+    # pressed is scaled around it by grab_sensitivity. None when not grabbing.
+    grab_anchor: tuple[float, float] | None = None
 
 
 class CursorPipeline:
@@ -34,6 +37,7 @@ class CursorPipeline:
         lost_reset_seconds: float,
         action_cooldown_seconds: float = 0.0,
         enabled: bool = True,
+        grab_sensitivity: float = 1.0,
     ) -> None:
         self.hand_pointer = hand_pointer
         self.screen_mapper = screen_mapper
@@ -44,6 +48,9 @@ class CursorPipeline:
         self.lost_reset_seconds = lost_reset_seconds
         self.action_cooldown_seconds = max(0.0, action_cooldown_seconds)
         self.enabled = enabled
+        # Clamp to a small positive floor so a grab can never fully freeze the
+        # cursor; 1.0 (or more) means "no reduction", matching old behaviour.
+        self.grab_sensitivity = max(0.05, grab_sensitivity)
         self.state = CursorPipelineState()
 
     def reset(self) -> None:
@@ -53,6 +60,7 @@ class CursorPipeline:
         self.state.screen_position = None
         self.state.action_status = ""
         self.state.pressed = False
+        self.state.grab_anchor = None
         self.state.last_seen_time = None
         self.state.last_action_times.clear()
         self._reset_smoother_to_mouse()
@@ -86,7 +94,23 @@ class CursorPipeline:
         position = screen_position or self.state.screen_position
         self.mouse.execute(CursorAction.RELEASE, position)
         self.state.pressed = False
+        self.state.grab_anchor = None
         self._mark_action(CursorAction.RELEASE, timestamp)
+
+    def _apply_grab_gain(self, position: ScreenPosition) -> ScreenPosition:
+        """While a grab is held, scale movement around the grab anchor by
+        grab_sensitivity so the same hand travel moves the cursor less (precise
+        drag). No-op when not grabbing or sensitivity >= 1.0."""
+        if (
+            not self.state.pressed
+            or self.state.grab_anchor is None
+            or self.grab_sensitivity >= 1.0
+        ):
+            return position
+        anchor_x, anchor_y = self.state.grab_anchor
+        scaled_x = anchor_x + (position.x - anchor_x) * self.grab_sensitivity
+        scaled_y = anchor_y + (position.y - anchor_y) * self.grab_sensitivity
+        return ScreenPosition(int(round(scaled_x)), int(round(scaled_y)), position.timestamp)
 
     def _reset_smoother_to_mouse(self) -> None:
         try:
@@ -107,6 +131,8 @@ class CursorPipeline:
                 return False
             self.mouse.execute(action, position)
             self.state.pressed = True
+            # Anchor the precise-drag scaling at the (absolute) grab point.
+            self.state.grab_anchor = (float(position.x), float(position.y))
             self._mark_action(action, timestamp)
             return True
 
@@ -115,6 +141,7 @@ class CursorPipeline:
                 return False
             self.mouse.execute(action, position)
             self.state.pressed = False
+            self.state.grab_anchor = None
             self._mark_action(action, timestamp)
             return True
 
@@ -143,6 +170,7 @@ class CursorPipeline:
             self.state.screen_position = None
             self.state.action_status = ""
             self.state.pressed = False
+            self.state.grab_anchor = None
             if previous_seen_time is not None and packet.timestamp - previous_seen_time <= self.lost_reset_seconds:
                 self.state.last_seen_time = previous_seen_time
             else:
@@ -171,32 +199,37 @@ class CursorPipeline:
             )
 
         smoothed_position = self.smoother.apply(screen_position)
-        self.state.screen_position = smoothed_position
+        # While a grab is held, scale movement down around the grab anchor for a
+        # precise drag; identical to smoothed_position otherwise. The smoother
+        # keeps tracking the absolute position, so releasing resumes normal
+        # absolute mapping (the cursor eases back toward the hand).
+        effective_position = self._apply_grab_gain(smoothed_position)
+        self.state.screen_position = effective_position
 
         result = self.action_mapper.map(
             cursor_gesture=cursor_gesture,
-            screen_position=smoothed_position,
+            screen_position=effective_position,
             timestamp=packet.timestamp,
         )
         if result.action == CursorAction.NONE:
             result = CursorControlResult(
                 CursorAction.NONE,
-                smoothed_position,
+                effective_position,
                 GestureName.UNKNOWN,
                 pointer.confidence,
                 packet.timestamp,
             )
         elif result.action == CursorAction.MOVE_CURSOR:
             if self.state.pressed:
-                self.mouse.drag_to(smoothed_position)
+                self.mouse.drag_to(effective_position)
             else:
-                self.mouse.move_to(smoothed_position)
+                self.mouse.move_to(effective_position)
         else:
             if result.action == CursorAction.RELEASE and self.state.pressed:
-                self.mouse.drag_to(smoothed_position)
+                self.mouse.drag_to(effective_position)
             else:
-                self.mouse.move_to(smoothed_position)
-            self._execute_discrete_action(result.action, smoothed_position, packet.timestamp)
+                self.mouse.move_to(effective_position)
+            self._execute_discrete_action(result.action, effective_position, packet.timestamp)
 
         self._set_action_status(result)
         return result

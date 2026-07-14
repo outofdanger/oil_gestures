@@ -34,8 +34,10 @@ from oil_gestures.cursor.hand_pointer import HandPointer, HandPointerConfig
 from oil_gestures.cursor.mouse_controller import MouseController, MouseControllerConfig
 from oil_gestures.cursor.screen_mapper import ScreenMapper, ScreenMapperConfig
 from oil_gestures.gestures.cursor.cursor_recognizer import CursorGestureRecognizer
+from oil_gestures.gestures.decision.gesture_fusion import GestureFusion
 from oil_gestures.gestures.decision.gesture_toggle import GestureToggle
 from oil_gestures.gestures.dynamic.dynamic_recognizer import DynamicGestureRecognizer
+from oil_gestures.gestures.dynamic.model_loader import DynamicModelLoaderConfig, load_dynamic_model
 from oil_gestures.gestures.static.static_recognizer import StaticGestureRecognizer
 from oil_gestures.integration.publisher import (
     MLIntegrationPublisher,
@@ -123,6 +125,7 @@ def build_cursor_pipeline(config: OilGesturesConfig) -> CursorPipeline:
         lost_reset_seconds=config.cursor.lost_reset_seconds,
         action_cooldown_seconds=config.cursor_actions.cooldown_seconds,
         enabled=config.cursor.enabled,
+        grab_sensitivity=config.cursor.grab_sensitivity,
     )
 
 
@@ -180,7 +183,22 @@ def run(
     fps_meter = FpsMeter()
     performance_meter = PerformanceMeter()
     static_recognizer = StaticGestureRecognizer(config.static)
-    dynamic_recognizer = DynamicGestureRecognizer(config.dynamic)
+    dynamic_model = (
+        load_dynamic_model(
+            DynamicModelLoaderConfig(
+                stgcn_checkpoint_path=config.dynamic.stgcn_checkpoint_path,
+                bilstm_checkpoint_path=config.dynamic.bilstm_checkpoint_path,
+                min_confidence=config.dynamic.min_confidence,
+                veto_floor=config.dynamic.veto_floor,
+                device=config.dynamic.device,
+                directional_lockout_seconds=config.dynamic.directional_lockout_seconds,
+            )
+        )
+        if config.dynamic.stgcn_checkpoint_path and config.dynamic.bilstm_checkpoint_path
+        else None
+    )
+    dynamic_recognizer = DynamicGestureRecognizer(config.dynamic, model=dynamic_model)
+    gesture_fusion = GestureFusion(swipe_cooldown_seconds=config.dynamic.swipe_cooldown_seconds)
     cursor_recognizer = CursorGestureRecognizer(config.cursor_gestures)
     cursor_toggle = GestureToggle(config.cursor_toggle)
     pipeline.enabled = config.cursor.enabled
@@ -228,6 +246,13 @@ def run(
                 performance_meter.update_inference(time.perf_counter() - inference_started)
                 static_gesture = static_recognizer.update(landmark_packet)
                 dynamic_gesture = dynamic_recognizer.update(landmark_packet)
+                # Edge-trigger discrete gestures (THUMB_UP, FIST, SWIPE_*,
+                # POINTING_INDEX) before anything downstream sees them, so
+                # holding one doesn't repeat the same action every frame - see
+                # gestures/decision/decision_layer.py. cursor_toggle below
+                # intentionally keeps using the raw static_gesture: its own
+                # dwell+release-latch needs the continuous per-frame signal.
+                fused_gestures = gesture_fusion.fuse(static_gesture, dynamic_gesture)
 
                 toggle_gesture = static_gesture.name if static_gesture is not None else None
                 if not paused and cursor_toggle.update(toggle_gesture, landmark_packet.timestamp):
@@ -270,8 +295,8 @@ def run(
                     runtime_event = event_publisher.publish_runtime(
                         frame_packet=frame_packet,
                         landmark_packet=landmark_packet,
-                        static_gesture=static_gesture,
-                        dynamic_gesture=dynamic_gesture,
+                        static_gesture=fused_gestures.static,
+                        dynamic_gesture=fused_gestures.dynamic,
                         cursor_gesture=cursor_gesture,
                         pointer=pipeline.state.pointer,
                         cursor_result=result,
@@ -321,7 +346,7 @@ def run(
                             status = "CURSOR ON"
                         else:
                             status = "GESTURE RECOGNITION"
-                        gestures = (dynamic_gesture, static_gesture, cursor_gesture)
+                        gestures = (fused_gestures.dynamic, fused_gestures.static, cursor_gesture)
                         gesture_status = " | ".join(
                             gesture.name.value for gesture in gestures if gesture is not None
                         )
@@ -358,6 +383,7 @@ def run(
                     dynamic_recognizer.reset()
                     cursor_recognizer.reset()
                     cursor_toggle.reset()
+                    gesture_fusion.reset()
 
         finally:
             pipeline.reset()

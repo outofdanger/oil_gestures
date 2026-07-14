@@ -115,6 +115,11 @@ class CursorConfig:
     max_speed_points_per_second: float = DEFAULT_CURSOR_MAX_SPEED_POINTS_PER_SECOND
     reacquire_frames: int = DEFAULT_CURSOR_REACQUIRE_FRAMES
     lost_reset_seconds: float = DEFAULT_CURSOR_LOST_RESET_SECONDS
+    # Movement gain while a grab (GRAB / held left button) is active. 1.0 keeps
+    # the normal absolute mapping; < 1.0 makes the cursor travel less for the
+    # same hand motion during a drag (precise positioning). Only affects grab -
+    # ordinary cursor movement is untouched.
+    grab_sensitivity: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -292,6 +297,29 @@ def load_config(config_dir: str | Path | None = None) -> OilGesturesConfig:
                 dynamic_section.get("min_confidence"),
                 dynamic_defaults.min_confidence,
             ),
+            veto_floor=_as_float(
+                dynamic_section.get("veto_floor"),
+                dynamic_defaults.veto_floor,
+            ),
+            swipe_cooldown_seconds=_as_float(
+                dynamic_section.get("swipe_cooldown_seconds"),
+                dynamic_defaults.swipe_cooldown_seconds,
+            ),
+            device=str(dynamic_section.get("device", dynamic_defaults.device)),
+            directional_lockout_seconds=_as_float(
+                dynamic_section.get("directional_lockout_seconds"),
+                dynamic_defaults.directional_lockout_seconds,
+            ),
+            stgcn_checkpoint_path=(
+                dynamic_defaults.stgcn_checkpoint_path
+                if "stgcn_checkpoint_path" not in dynamic_section
+                else dynamic_section.get("stgcn_checkpoint_path")
+            ),
+            bilstm_checkpoint_path=(
+                dynamic_defaults.bilstm_checkpoint_path
+                if "bilstm_checkpoint_path" not in dynamic_section
+                else dynamic_section.get("bilstm_checkpoint_path")
+            ),
         ),
         cursor=CursorConfig(
             enabled=_as_bool(cursor_section.get("enabled"), cursor_defaults.enabled),
@@ -326,6 +354,10 @@ def load_config(config_dir: str | Path | None = None) -> OilGesturesConfig:
             lost_reset_seconds=_as_float(
                 cursor_section.get("lost_reset_seconds"),
                 cursor_defaults.lost_reset_seconds,
+            ),
+            grab_sensitivity=_as_float(
+                cursor_section.get("grab_sensitivity"),
+                cursor_defaults.grab_sensitivity,
             ),
         ),
         cursor_gestures=CursorGestureConfig(

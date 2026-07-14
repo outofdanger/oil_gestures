@@ -47,13 +47,22 @@ class LandmarkPacket:
     MediaPipe category name (e.g. "Closed_Fist", "Open_Palm", "Thumb_Up",
     "Victory", "None") and its score. They stay unset for landmark-only backends.
 
+    world_landmarks are MediaPipe's metric, hand-centered 3D landmarks
+    (distinct from ``landmarks``, which are image-normalized [0, 1] x/y with
+    a relative z) - the ST-GCN dynamic-gesture model was trained on these
+    (see dynamic_gestures/scripts/process_dynamic_dataset.py / train_stgcn_model.py
+    checkpoint metadata key "node_features": "world_landmarks"), so they must
+    be populated for gestures.dynamic.model_loader's ensemble to work. None
+    for backends that don't request them.
+
     Producer:
-        vision.mediapipe_gesture.py (landmarks + canned gesture)
+        vision.mediapipe_gesture.py (landmarks + world_landmarks + canned gesture)
         vision.mediapipe_landmarker.py (landmarks only)
 
     Consumers:
         gestures.static.static_recognizer.py
         gestures.dynamic.sequence_buffer.py
+        gestures.dynamic.model_loader.py
         gestures.cursor.cursor_recognizer.py
         cursor.hand_pointer.py
         vision.drawing.py
@@ -66,6 +75,7 @@ class LandmarkPacket:
     timestamp: float
     raw_gesture: str | None = None
     raw_gesture_score: float = 0.0
+    world_landmarks: Any | None = None
 
 
 @dataclass

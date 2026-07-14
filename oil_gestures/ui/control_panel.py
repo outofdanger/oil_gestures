@@ -5,64 +5,56 @@ from PySide6.QtCore import Qt, Signal
 class ControlPanel(QWidget):
     """Правая панель управления."""
 
+    help_clicked = Signal()
     emergency_clicked = Signal()
-    inventory_item_clicked = Signal(str)  # имя детали
+    inventory_item_clicked = Signal(str) 
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumWidth(200)
-        self.setStyleSheet("background-color: #2c3e50;")
+        self.setMinimumWidth(230)
+        self.setStyleSheet("background-color: gray;")
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setContentsMargins(10, 15, 12, 15)
         layout.setSpacing(10)
 
         # Заголовок
         title = QLabel("ПАНЕЛЬ УПРАВЛЕНИЯ")
         title.setAlignment(Qt.AlignCenter)
-        title.setStyleSheet("color: white; font-size: 14px; font-weight: bold;")
+        title.setStyleSheet("color: white; font-size: 16px; font-weight: bold;")
         layout.addWidget(title)
 
-        # Текущий статический жест - отдельный, всегда актуальный индикатор,
-        # независимый от лога действий ниже (message).
-        gesture_caption = QLabel("ТЕКУЩИЙ ЖЕСТ")
-        gesture_caption.setAlignment(Qt.AlignCenter)
-        gesture_caption.setStyleSheet("color: #7f8c8d; font-size: 11px; font-weight: bold;")
-        layout.addWidget(gesture_caption)
-
-        self.gesture_value = QLabel("—")
-        self.gesture_value.setAlignment(Qt.AlignCenter)
-        self.gesture_value.setStyleSheet(
-            "color: #2ecc71; font-size: 16px; font-weight: bold; "
-            "background-color: #1a1a2e; padding: 8px; border-radius: 6px;"
+                # Состояние модели (крупно, как сейчас жесты)
+        self.model_state = QLabel("СОСТОЯНИЕ МОДЕЛИ\nОжидание")
+        self.model_state.setAlignment(Qt.AlignCenter)
+        self.model_state.setWordWrap(True)
+        self.model_state.setStyleSheet(
+            "color: #2ecc71; font-size: 12px; font-weight: bold; "
+            "background-color: #1a1a2e; padding: 7px; border-radius: 6px;"
         )
-        layout.addWidget(self.gesture_value)
+        layout.addWidget(self.model_state)
 
-        # Сообщение
-        self.message = QLabel("Ожидание действий...")
-        self.message.setAlignment(Qt.AlignCenter)
-        self.message.setWordWrap(True)
-        self.message.setStyleSheet(
-            "color: #bdc3c7; font-size: 13px; background-color: #1a1a2e; "
-            "padding: 12px; border-radius: 6px;"
-        )
-        layout.addWidget(self.message)
-
-
-        # В __init__ после message:
+        # Виджет камеры
         self.camera_label = QLabel("КАМЕРА")
         self.camera_label.setAlignment(Qt.AlignCenter)
         self.camera_label.setMinimumHeight(150)
         self.camera_label.setStyleSheet(
-            "background-color: #1a1a2e; color: gray; border: 1px solid #34495e; border-radius: 4px;"
+            "background-color: white; color: gray; border: 2px solid #34495e;"
         )
         layout.addWidget(self.camera_label)
 
-
+        # Состояние жеста (поменьше)
+        self.gesture_state = QLabel("ОБРАБОТКА ЖЕСТОВ\n—")
+        self.gesture_state.setAlignment(Qt.AlignCenter)
+        self.gesture_state.setStyleSheet(
+            "color: #3498db; font-size: 11px; font-weight: bold; "
+            "background-color: #1a1a2e; padding: 6px; border-radius: 6px;"
+        )
+        layout.addWidget(self.gesture_state)
 
         # Инвентарь
         self.inventory_label = QLabel("ИНВЕНТАРЬ")
-        self.inventory_label.setStyleSheet("color: #f39c12; font-size: 12px; font-weight: bold; padding: 4px;")
+        self.inventory_label.setStyleSheet("color: #f39c12; font-size: 14px; font-weight: bold; padding: 4px;")
         layout.addWidget(self.inventory_label)
 
         self.inventory_layout = QVBoxLayout()
@@ -70,6 +62,20 @@ class ControlPanel(QWidget):
         layout.addLayout(self.inventory_layout)
 
         layout.addStretch()
+
+        # Кнопка справки
+        self.help_btn = QPushButton("СПРАВКА")
+        self.help_btn.setMinimumHeight(40)
+        self.help_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2980b9; color: white; font-size: 14px;
+                font-weight: bold; border: none; border-radius: 6px;
+            }
+            QPushButton:hover { background-color: #3498db; }
+            QPushButton:pressed { background-color: #1c6ea4; }
+        """)
+        self.help_btn.clicked.connect(self.help_clicked.emit)
+        layout.addWidget(self.help_btn)
 
         # Аварийный стоп
         self.emergency_btn = QPushButton("АВАРИЙНЫЙ СТОП")
@@ -85,19 +91,11 @@ class ControlPanel(QWidget):
         self.emergency_btn.clicked.connect(self.emergency_clicked.emit)
         layout.addWidget(self.emergency_btn)
 
-    def set_message(self, text: str):
-        self.message.setText(text)
+    def set_gesture(self, text: str):
+        self.gesture_state.setText(text)
 
-    def set_gesture(self, name: str | None, confidence: float = 0.0):
-        """Текущий статический жест от ML (независимо от лога действий)."""
-        if not name:
-            self.gesture_value.setText("—")
-            return
-        try:
-            pct = f"{float(confidence):.0%}"
-        except (TypeError, ValueError):
-            pct = "?"
-        self.gesture_value.setText(f"{name}  ({pct})")
+    def set_model_state(self, text: str):
+        self.model_state.setText(text)
 
     def set_inventory(self, items: list):
         # Очистить старые кнопки
@@ -113,7 +111,14 @@ class ControlPanel(QWidget):
             return
 
         for item in items:
-            btn = QPushButton(f"📦 {item}")
+            # Элемент инвентаря - кортеж (внутреннее имя, отображаемое имя).
+            # Для обратной совместимости поддержим и случай, если придёт просто строка.
+            if isinstance(item, (tuple, list)):
+                name, display_name = item[0], item[1]
+            else:
+                name, display_name = item, item
+
+            btn = QPushButton(f"📦 {display_name}")
             btn.setStyleSheet("""
                 QPushButton {
                     background-color: #34495e; color: white; font-size: 12px;
@@ -121,18 +126,12 @@ class ControlPanel(QWidget):
                 }
                 QPushButton:hover { background-color: #2980b9; }
             """)
-            btn.clicked.connect(lambda checked, name=item: self.inventory_item_clicked.emit(name))
+            btn.clicked.connect(lambda checked, name=name: self.inventory_item_clicked.emit(name))
             self.inventory_layout.addWidget(btn)
 
-
     def set_camera_image(self, image):
-        """Показать уже декодированный и отмасштабированный кадр камеры.
-
-        Декодирование (base64 + JPEG + scale) выполняется вне GUI-потока в
-        oil_gestures.ui.camera_frame_decoder, сюда приходит готовый ``QImage`` —
-        остаётся лишь дёшево превратить его в ``QPixmap``."""
+        """Показать уже декодированный и отмасштабированный кадр камеры."""
         from PySide6.QtGui import QPixmap
-
         if image is None or image.isNull():
             return
         self.camera_label.setPixmap(QPixmap.fromImage(image))

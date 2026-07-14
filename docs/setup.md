@@ -2,25 +2,24 @@
 
 ## Python runtime
 
-Use the standard GIL-enabled CPython 3.14.x runtime. The tested and locally
-pinned version is CPython 3.14.6; `.python-version` allows compatible runtime
-managers such as pyenv to select it automatically. The free-threaded `3.14t`
-build has not been validated with MediaPipe and is not supported yet.
+Use the standard GIL-enabled CPython 3.12.x runtime. The tested and locally
+pinned version is CPython 3.12.3; `.python-version` allows compatible runtime
+managers such as pyenv to select it automatically.
 
 Create an isolated environment and install dependencies on macOS or Linux:
 
 ```bash
-python3.14 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 python --version
 ```
 
-The final command must report Python 3.14.x. On Windows, use:
+The final command must report Python 3.12.x. On Windows, use:
 
 ```powershell
-py -3.14 -m venv .venv
+py -3.12 -m venv .venv
 .venv\Scripts\activate
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
