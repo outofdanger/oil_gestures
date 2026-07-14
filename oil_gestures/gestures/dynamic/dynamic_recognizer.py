@@ -26,9 +26,10 @@ class DynamicRecognizerConfig:
     # POINTING_INDEX). Rate-limits stepping through elements; does not affect
     # recognition quality or the continuous ROTATE gestures.
     swipe_cooldown_seconds: float = 0.6
-    # Torch device for the ensemble. "auto" uses CUDA when torch reports it
-    # available, else CPU. "cuda"/"cpu" force it. The models and their per-frame
-    # inputs are moved to this device in gestures.dynamic.model_loader.
+    # Torch device for the ensemble. "auto" = CUDA (discrete NVIDIA) -> MPS
+    # (Apple Silicon GPU) -> CPU. Force with "cuda" / "mps" / "cpu". The models
+    # and their per-frame inputs are moved to this device in
+    # gestures.dynamic.model_loader.
     device: str = "auto"
     # Rest floor for the directional lockout (gestures.dynamic.model_loader):
     # after a direction fires, its opposite is suppressed until the hand rests
@@ -42,8 +43,8 @@ class DynamicRecognizerConfig:
     # Each model reads its own window length from its checkpoint, so neither
     # uses sequence_length above. Either set to None disables dynamic
     # recognition entirely (no model loaded), same as today.
-    stgcn_checkpoint_path: str | None = "assets/models/pytorch/dynamic_stgcn_merged.pt"
-    bilstm_checkpoint_path: str | None = "assets/models/pytorch/dynamic_bilstm_merged.pt"
+    stgcn_checkpoint_path: str | None = "assets/models/pytorch/dynamic_stgcn_transition.pt"
+    bilstm_checkpoint_path: str | None = "assets/models/pytorch/dynamic_bilstm_transition.pt"
 
 
 class DynamicGestureRecognizer:

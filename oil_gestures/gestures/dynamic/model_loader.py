@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
+
+# Apple Silicon (MPS): let ops not yet implemented on the Metal backend fall
+# back to CPU instead of raising. Must be set before torch is imported.
+os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 
 import numpy as np
 import torch
@@ -194,8 +199,14 @@ class _STGCN(nn.Module):
 
 @dataclass(frozen=True)
 class DynamicModelLoaderConfig:
-    stgcn_checkpoint_path: str = "assets/models/pytorch/dynamic_stgcn_merged.pt"
-    bilstm_checkpoint_path: str = "assets/models/pytorch/dynamic_bilstm_merged.pt"
+    # The _transition checkpoints add a 9th class TRANSITION (the hand's return
+    # stroke) which the runtime drops as "no gesture" (not a GestureName) - this
+    # kills return-stroke false-opposites at the source. The older _merged pair
+    # (8 classes) is kept in assets/models/pytorch/ as a prior variant.
+    stgcn_checkpoint_path: str = "assets/models/pytorch/dynamic_stgcn_transition.pt"
+    bilstm_checkpoint_path: str = "assets/models/pytorch/dynamic_bilstm_transition.pt"
+    # "auto" = CUDA (discrete NVIDIA) -> MPS (Apple Silicon GPU) -> CPU. Force
+    # with "cuda" / "mps" / "cpu".
     device: str = "auto"
     # Minimum ST-GCN probability for its top class to count as a trigger at all.
     min_confidence: float = DEFAULT_DYNAMIC_CONFIDENCE_THRESHOLD
@@ -342,12 +353,20 @@ class EnsembleDynamicGestureModel:
         )
 
     @staticmethod
-    def _resolve_device(device: str) -> torch.device:
-        if device == "cpu":
-            return torch.device("cpu")
-        if device == "cuda":
+    def _mps_available() -> bool:
+        backend = getattr(torch.backends, "mps", None)
+        return bool(backend is not None and backend.is_available() and backend.is_built())
+
+    @classmethod
+    def _resolve_device(cls, device: str) -> torch.device:
+        if device in ("cpu", "cuda", "mps"):
+            return torch.device(device)
+        # auto: discrete NVIDIA (CUDA) -> Apple Silicon GPU (MPS) -> CPU.
+        if torch.cuda.is_available():
             return torch.device("cuda")
-        return torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+        if cls._mps_available():
+            return torch.device("mps")
+        return torch.device("cpu")
 
     def reset(self) -> None:
         self._buffer.clear()
