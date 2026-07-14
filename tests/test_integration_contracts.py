@@ -183,7 +183,7 @@ def test_future_gesture_names_do_not_break_v1_schema() -> None:
     jsonschema = pytest.importorskip("jsonschema")
     payload = json.loads(build_runtime_event(MLIntegrationPublisher()).to_json())
     # Gestures the ML does not produce yet must still validate as v1 (extensible
-    # transport, not a closed enum). See docs/interaction_spec.md.
+    # transport, not a closed enum). See docs/integration_contract.md.
     payload["gestures"]["dynamic"] = {
         "name": "SWIPE_LEFT",
         "confidence": 0.9,

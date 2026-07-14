@@ -127,3 +127,6 @@ dynamic_gestures/data/processed/*
 
 # macOS junk
 .DS_Store
+
+# Claude Code local settings (не версионируем)
+.claude/

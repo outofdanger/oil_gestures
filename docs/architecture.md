@@ -43,6 +43,25 @@ Static and learned dynamic gesture results never enter `CursorActionMapper`.
 Future activation of cursor control by a learned dynamic gesture belongs to the
 runtime orchestration layer and is not implemented yet.
 
+## ML producer ⇄ UI/3D consumer boundary
+
+The ML runtime (`app/main.py`) is an autonomous **producer**: it recognizes
+gestures and publishes a versioned NDJSON/TCP contract via `integration/`
+(`ml_events.v1.schema.json`). The PySide6 + PyVista 3D simulator
+(`oil_gestures/ui/` + `oil_gestures/simulator/`) is an autonomous **consumer**.
+They never import each other - the only shared dependency is the JSON contract.
+See [`integration_contract.md`](integration_contract.md).
+
+- `ui/controller.py` owns all Qt-specific work (transport via `QtEventClient`,
+  camera-frame decode, menus, render scheduling, controller/level-gauge clicks).
+- `simulator/simulator_controller.py` is **Qt-free**: it interprets a contract
+  event into flags (activate / zoom / rotate-step / open-menu / ...) per
+  [`command_mapping.md`](command_mapping.md); the `Controller` performs them,
+  reusing the scene's own click/focus logic.
+- Rendering is render-on-demand (`simulator/render_scheduler.py`) with a
+  cross-platform GPU/AA profile (`simulator/render_profile.py`).
+- `app/run_ui.py` launches both processes and wires GPU/render environment.
+
 ## Platform Backends
 
 ```text

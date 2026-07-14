@@ -25,7 +25,7 @@ class GestureFusion:
     Applies a DecisionLayer per recognition channel and reassembles the frame.
 
     Does not collapse static/dynamic into a single "winning" gesture - they
-    are independent recognition subsystems (per docs/interaction_spec.md) and
+    are independent recognition subsystems (per docs/gesture_list.md) and
     the UI already handles them arriving in parallel (e.g. cursor-mode message
     next to a static-gesture action). What this *does* do is stop a held
     gesture from being published as the same classification on every frame -

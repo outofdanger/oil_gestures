@@ -35,17 +35,21 @@ training experiment outputs kept for comparison/`check_dynamic_model.py`.
   full, independent implementations, and nothing outside this package
   imported `dynamic_gestures.runtime`. It has been removed as dead code.
 - The live app runs a dual-model ensemble, not a single checkpoint: it loads
-  both `assets/models/pytorch/dynamic_stgcn_merged.pt` and
-  `assets/models/pytorch/dynamic_bilstm_merged.pt` (the `_merged` variants
-  because they include `POINTING_INDEX`, required for the UI's menu-open
-  gesture). ST-GCN (reads world-landmark hand pose) leads as the fast
-  trigger; BiLSTM (reads image-landmark motion/velocity) confirms or vetoes
-  it - see `oil_gestures/gestures/dynamic/model_loader.py`'s
-  `_ensemble_decision`, ported from this same `test_dynamic_model.py`'s
-  `ensemble_decision`, where the scheme was first validated on a live
-  camera. Config: `DynamicRecognizerConfig.stgcn_checkpoint_path` /
-  `.bilstm_checkpoint_path` in `configs/gestures.yaml`. The other variants
-  below stay here for reference/comparison, not loaded by the app.
+  both `assets/models/pytorch/dynamic_stgcn_transition.pt` and
+  `assets/models/pytorch/dynamic_bilstm_transition.pt`. ST-GCN (reads
+  world-landmark hand pose) leads as the fast trigger; BiLSTM (reads
+  image-landmark motion/velocity) confirms or vetoes it - see
+  `oil_gestures/gestures/dynamic/model_loader.py`'s `_ensemble_decision`,
+  ported from this same `test_dynamic_model.py`'s `ensemble_decision`, where
+  the scheme was first validated on a live camera. Config:
+  `DynamicRecognizerConfig.stgcn_checkpoint_path` / `.bilstm_checkpoint_path`
+  in `configs/gestures.yaml`.
+- The `_transition` checkpoints add a 9th class **TRANSITION** (time-reversed
+  swipes = the hand's return stroke). The runtime drops TRANSITION predictions
+  (not a `GestureName`), so a return stroke reads as "no gesture" instead of
+  the opposite swipe - this kills return-stroke false-opposites at the source.
+  The older 8-class `_merged` pair (and `_no_point` variants) stay in
+  `models/` / `assets/models/pytorch/` for reference/comparison, not loaded.
 - The pipeline scripts still import the shared `oil_gestures` runtime package
   (`vision.*`, `core.*`). They add the repository root to `sys.path` themselves,
   so run them from anywhere; paths resolve against the repo root.

@@ -14,8 +14,14 @@ learned dynamic gesture results as mouse actions.
 
 ## Current Features
 
-- Static gesture recognizer for `OPEN_PALM`, `FIST`, and `OK_SIGN`.
-- Model-only dynamic-recognition interface, ready for a learned model.
+- Static gesture recognizer for `OPEN_PALM`, `FIST`, `THUMB_UP`, `VICTORY`
+  (MediaPipe canned classifier).
+- Learned dynamic-gesture ensemble (ST-GCN + BiLSTM) for `POINTING_INDEX`,
+  `SWIPE_LEFT/RIGHT`, `ROTATE_CW/CCW`, `SQUEEZE`, `RELEASE`; runs on CUDA / MPS
+  when available. See [`dynamic_gestures/README.md`](dynamic_gestures/README.md).
+- PySide6 + PyVista **3D oil-rig simulator UI** driven by gestures over the
+  contract (valves, manometers, controller, level gauge). See
+  [`docs/command_mapping.md`](docs/command_mapping.md) for the gesture → action map.
 - Isolated rule-based cursor recognizer for `INDEX_MCP`, `INDEX_SQUEEZE`,
   `INDEX_RELEASE`, and `MIDDLE_PINCH`.
 - Optional cursor-control feature, initially disabled and manually testable with `--cursor-on`.
@@ -32,13 +38,19 @@ learned dynamic gesture results as mouse actions.
 app/
   app_config.py        Typed config dataclasses and YAML loading
   main.py              Runtime composition and OpenCV loop
+  ui_main.py           3D simulator UI entry point (contract consumer)
+  run_ui.py            Launches ML producer + UI together
 oil_gestures/
   vision/              Camera, MediaPipe, drawing, landmark helpers
-  gestures/            Independent static, dynamic-model, and cursor recognizers
+  gestures/            Independent static, dynamic-ensemble, and cursor recognizers
   cursor/              Pointer mapping plus platform-neutral mouse facade/backends
-  commands/            Gesture-to-command mapping
+  commands/            Gesture-to-command mapping helpers
+  integration/         Versioned NDJSON/TCP contract (producer/consumer boundary)
+  simulator/           PyVista 3D scene, model, render scheduler/profile
+  ui/                  PySide6 window, control panel, gesture->scene controller
 configs/               YAML runtime defaults
-assets/models/         Local model files
+assets/models/         MediaPipe .task + trained PyTorch .pt checkpoints
+dynamic_gestures/      Offline dynamic-gesture training pipeline + datasets
 scripts/               Thin executable scripts
 tests/                 Unit tests for pure logic
 ```
@@ -111,6 +123,19 @@ Run mouse diagnostics:
 ```bash
 python app/main.py --mouse-diagnostics
 ```
+
+## 3D Simulator UI
+
+Launch the ML producer and the PySide6 + PyVista 3D UI together (they talk only
+over the contract; the launcher wires GPU/render env and starts both):
+
+```bash
+python app/run_ui.py
+```
+
+The UI is an autonomous consumer: it can also run against the fake producer
+(`python scripts/mock_ml_events.py`) with no camera. Gesture → scene actions are
+documented in [`docs/command_mapping.md`](docs/command_mapping.md).
 
 ## Autonomous integration
 
