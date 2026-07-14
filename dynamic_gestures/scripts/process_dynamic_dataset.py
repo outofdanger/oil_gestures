@@ -38,8 +38,18 @@ LABEL_TO_ID = {
     "ROTATE_COUNTERCLOCKWISE": 5,
     "SWIPE_LEFT": 6,
     "SWIPE_RIGHT": 7,
+    "TRANSITION": 8,
 }
 ID_TO_LABEL = {value: key for key, value in LABEL_TO_ID.items()}
+
+# TRANSITION has no raw recordings of its own: it is synthesized by time-reversing
+# swipe clips. A reversed SWIPE_LEFT is the hand travelling back to rest with the
+# residual "left swipe" pose - exactly the return stroke that live recognition
+# otherwise misreads as SWIPE_RIGHT. Only swipes are reversed: a reversed ROTATE_CW
+# is a genuine ROTATE_CCW and a reversed SQUEEZE is close to a real RELEASE, so
+# reversing those would poison their true classes.
+TRANSITION_LABEL = "TRANSITION"
+REVERSIBLE_LABELS = ("SWIPE_LEFT", "SWIPE_RIGHT")
 
 WRIST_INDEX = LANDMARK_INDEX["WRIST"]
 MIDDLE_MCP_INDEX = LANDMARK_INDEX["MIDDLE_MCP"]
@@ -63,6 +73,7 @@ MANIFEST_COLUMNS = (
     "label_id",
     "split",
     "is_mirrored",
+    "is_reversed",
     "raw_seq_len",
     "target_len",
     "measured_fps",
@@ -109,6 +120,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Disable horizontal-mirror (left/right swap) augmentation. No-op when --no-augment is set.",
     )
     parser.add_argument(
+        "--no-transitions",
+        dest="transitions",
+        action="store_false",
+        default=True,
+        help=(
+            "Disable the synthetic TRANSITION class (time-reversed swipes = the hand's "
+            "return stroke). Unlike mirror augmentation, TRANSITION samples are generated "
+            "in every split (each reversal stays in its source clip's split), because a "
+            "class absent from val/test could not be measured at all."
+        ),
+    )
+    parser.add_argument(
         "--exclude-labels",
         type=str,
         nargs="*",
@@ -144,6 +167,7 @@ class ProcessedSample:
     measured_fps: float
     created_at: str
     is_mirrored: bool = False
+    is_reversed: bool = False
 
 
 def load_raw_npz(path: Path) -> dict[str, Any] | None:
@@ -291,6 +315,28 @@ def mirror_sample(sample: ProcessedSample) -> ProcessedSample:
         measured_fps=sample.measured_fps,
         created_at=sample.created_at,
         is_mirrored=True,
+        is_reversed=sample.is_reversed,
+    )
+
+
+def reversed_transition_sample(sample: ProcessedSample) -> ProcessedSample:
+    """Time-reverse a swipe into a TRANSITION (return-stroke) sample.
+
+    Reversing the already-normalized arrays equals normalizing a reversed raw
+    clip: per-frame wrist centering is frame-local, the scale is a mean over
+    frames (order-free), and linear resampling is time-symmetric. This would
+    NOT hold for first_frame anchoring, where the anchor frame changes.
+    """
+    return ProcessedSample(
+        path=sample.path,
+        norm_image=sample.norm_image[::-1].copy(),
+        norm_world=sample.norm_world[::-1].copy(),
+        label=TRANSITION_LABEL,
+        label_id=LABEL_TO_ID[TRANSITION_LABEL],
+        raw_seq_len=sample.raw_seq_len,
+        measured_fps=sample.measured_fps,
+        created_at=sample.created_at,
+        is_reversed=True,
     )
 
 
@@ -411,6 +457,7 @@ def write_manifest(
             "label_id": sample.label_id,
             "split": split_name,
             "is_mirrored": int(sample.is_mirrored),
+            "is_reversed": int(sample.is_reversed),
             "raw_seq_len": sample.raw_seq_len,
             "target_len": target_len,
             "measured_fps": sample.measured_fps,
@@ -471,6 +518,16 @@ def main() -> int:
             f"--exclude-labels got unknown label(s): {unknown_excludes}. Known labels: {sorted(LABEL_TO_ID)}"
         )
 
+    # TRANSITION exists only as time-reversed swipes; when disabled (flag, explicit
+    # exclude, or no swipe sources to reverse) it must also vanish from class_names,
+    # or the model would train with a class that has zero samples.
+    has_reversal_sources = any(
+        sample.label in REVERSIBLE_LABELS and sample.label not in exclude_labels for sample in samples
+    )
+    transitions_enabled = args.transitions and TRANSITION_LABEL not in exclude_labels and has_reversal_sources
+    if not transitions_enabled:
+        exclude_labels.add(TRANSITION_LABEL)
+
     if exclude_labels:
         samples = [sample for sample in samples if sample.label not in exclude_labels]
         if not samples:
@@ -493,8 +550,22 @@ def main() -> int:
     splits = build_splits(samples, args.train_ratio, args.val_ratio, args.test_ratio, args.seed)
     labeled_samples: list[tuple[ProcessedSample, str]] = list(zip(samples, splits))
 
-    # Augmentation only ever expands the train split, so val/test remain a faithful,
-    # leakage-free measure of generalization.
+    # Synthetic TRANSITION class: every swipe also contributes its time-reversed
+    # return stroke. Generated in ALL splits (a new class must be measurable on
+    # val/test), but each reversal inherits its source clip's split, so no clip's
+    # information ever crosses a split boundary. Runs before mirroring so train
+    # TRANSITION samples get mirrored like everything else.
+    transition_sources = 0
+    if transitions_enabled:
+        reversed_samples: list[tuple[ProcessedSample, str]] = []
+        for sample, split in labeled_samples:
+            if sample.label in REVERSIBLE_LABELS:
+                reversed_samples.append((reversed_transition_sample(sample), split))
+        transition_sources = len(reversed_samples)
+        labeled_samples.extend(reversed_samples)
+
+    # Mirror augmentation only ever expands the train split, so val/test remain a
+    # faithful, leakage-free measure of generalization.
     mirror_enabled = args.augment and args.mirror
     train_before = sum(1 for _, split in labeled_samples if split == "train")
     if mirror_enabled:
@@ -564,6 +635,8 @@ def main() -> int:
                 "mirror": mirror_enabled,
                 "train_size_before": train_before,
                 "train_size_after": train_after,
+                "transitions": transitions_enabled,
+                "transition_sources": transition_sources,
             },
         },
         output_path,
@@ -582,6 +655,7 @@ def main() -> int:
     print(f"Classes ({len(class_names)}): {class_names}")
     print(f"Samples per class: {samples_per_class}")
     print(f"Augmentation: mirror={mirror_enabled} train {train_before} -> {train_after}")
+    print(f"TRANSITION (reversed swipes): enabled={transitions_enabled} sources={transition_sources}")
     print(f"Train/val/test sizes: {train['labels'].shape[0]}/{val['labels'].shape[0]}/{test['labels'].shape[0]}")
     print(f"Output .pt path: {output_path}")
     print(f"Manifest path: {manifest_path}")

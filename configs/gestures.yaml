@@ -50,8 +50,12 @@ dynamic:
   # See dynamic_gestures/README.md for how they were trained and the other
   # variants available in dynamic_gestures/models/. Either set to null
   # disables dynamic recognition entirely (no model loaded).
-  stgcn_checkpoint_path: "assets/models/pytorch/dynamic_stgcn_merged.pt"
-  bilstm_checkpoint_path: "assets/models/pytorch/dynamic_bilstm_merged.pt"
+  # The _transition pair adds a 9th class TRANSITION (time-reversed swipes =
+  # the hand's return stroke). The runtime silently drops TRANSITION
+  # predictions (not a GestureName), which is exactly right: a return stroke
+  # is "no gesture" instead of the opposite swipe.
+  stgcn_checkpoint_path: "assets/models/pytorch/dynamic_stgcn_transition.pt"
+  bilstm_checkpoint_path: "assets/models/pytorch/dynamic_bilstm_transition.pt"
 
 cursor:
   # Temporary manual gate. A learned dynamic model will control activation later.
