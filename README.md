@@ -153,3 +153,9 @@ On Linux, verify the real X11 backend before starting the camera:
 ```bash
 python app/main.py --mouse-diagnostics --real-mouse
 ```
+## License
+
+The source code in this repository is licensed under the Apache License 2.0.
+See [LICENSE](LICENSE) for details.
+
+Model checkpoints, datasets, third-party assets, and MediaPipe task files may be subject to separate licenses and are not automatically covered by the repository license unless explicitly stated.
